@@ -1,6 +1,9 @@
 import { Link, usePage, router } from '@inertiajs/react';
 import { useState, useEffect, createContext, useContext } from 'react';
 
+// --- IMPORT KOMPONEN APPLICATION LOGO ---
+import ApplicationLogo from '@/components/ApplicationLogo';
+
 // --- IMPORT KOMPONEN NOTIFIKASI, CONFIRM MODAL & LOADING ---
 import { Toast, ConfirmModal } from '@/components/ui/Notifikasi';
 import Loading from '@/components/ui/Loading';
@@ -136,15 +139,13 @@ export default function AuthenticatedLayout({ header, children }) {
 
     return (
         <ConfirmContext.Provider value={confirm}>
-            {/* 🌟 BACKGROUND UTAMA: BIRU NAVY ELEGAN */}
+            {/* BACKGROUND UTAMA: BIRU NAVY ELEGAN */}
             <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50/50 to-slate-200 dark:from-[#090f2b] dark:via-[#101940] dark:to-[#070b20] text-slate-900 dark:text-slate-100 font-sans selection:bg-red-500 selection:text-white transition-colors duration-300 relative overflow-x-hidden">
                 
-                {/* 🌟 ANIMASI BACKGROUND STATISTIK (LINE CHART & BAR CHART) */}
+                {/* ANIMASI BACKGROUND STATISTIK */}
                 <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none opacity-20 dark:opacity-25">
-                    {/* Grid Garis Futuristik */}
                     <div className="absolute inset-0 bg-[linear-gradient(to_right,#3b82f615_1px,transparent_1px),linear-gradient(to_bottom,#3b82f615_1px,transparent_1px)] bg-[size:48px_48px]" />
                     
-                    {/* SVG Line Chart Animasi */}
                     <div className="absolute inset-x-0 bottom-36 h-48 flex items-end">
                         <svg className="w-full h-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 1200 200">
                             <defs>
@@ -169,7 +170,6 @@ export default function AuthenticatedLayout({ header, children }) {
                         </svg>
                     </div>
 
-                    {/* Bar Chart Silhouettes Berdenyut */}
                     <div className="absolute bottom-0 left-0 right-0 h-48 flex items-end justify-between px-6">
                         {[40, 65, 30, 85, 50, 90, 60, 35, 80, 55, 25, 75, 45, 70, 55, 85, 40, 80, 30, 90, 50, 65, 35, 75].map((height, i) => (
                             <div 
@@ -185,7 +185,6 @@ export default function AuthenticatedLayout({ header, children }) {
                     </div>
                 </div>
 
-                {/* Ambient Glow Lingkaran Cahaya Merah Lebih Transparan & Lembut */}
                 <div className="absolute top-10 left-1/4 w-[600px] h-[600px] bg-red-600/8 dark:bg-red-600/10 rounded-full blur-[180px] pointer-events-none animate-pulse duration-1000" />
                 <div className="absolute top-1/3 right-10 w-[550px] h-[550px] bg-blue-500/10 dark:bg-blue-600/15 rounded-full blur-[190px] pointer-events-none" />
 
@@ -202,20 +201,11 @@ export default function AuthenticatedLayout({ header, children }) {
                             <div className="flex items-center gap-4">
                                 <Link 
                                     href={getRoute('home')} 
-                                    className="flex items-center gap-3.5 group/logo focus:outline-none transition-transform active:scale-95"
+                                    className="flex items-center focus:outline-none transition-transform active:scale-95"
                                     title="Kembali ke Beranda"
                                 >
-                                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-red-700 via-red-600 to-red-500 flex items-center justify-center text-white font-black text-2xl shadow-lg shadow-red-600/30 group-hover/logo:scale-105 group-hover/logo:shadow-red-500/50 transition-all duration-300">
-                                        M
-                                    </div>
-                                    <div className="hidden sm:block">
-                                        <span className="font-extrabold text-lg tracking-wider text-slate-800 dark:text-slate-100 block leading-none group-hover/logo:text-red-600 dark:group-hover/logo:text-red-400 transition-colors duration-200">
-                                            MITRATEL
-                                        </span>
-                                        <span className="text-[10px] text-red-600 dark:text-red-400 font-bold tracking-[0.2em] uppercase mt-1 block">
-                                            Command Center
-                                        </span>
-                                    </div>
+                                    {/* Memanggil Komponen ApplicationLogo */}
+                                    <ApplicationLogo />
                                 </Link>
 
                                 {header && (
@@ -237,7 +227,7 @@ export default function AuthenticatedLayout({ header, children }) {
                             <div className="flex items-center gap-2 sm:gap-3">
                                 <button
                                     onClick={toggleTheme}
-                                    className="p-2.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800/80 transition-all focus:outline-none active:scale-95 border border-transparent hover:border-slate-300/50 dark:hover:border-white/10"
+                                    className="p-2.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800/80 transition-all focus:outline-none active:scale-95 border border-transparent hover:border-slate-300/50 dark:hover:border-white/10 cursor-pointer"
                                     title="Ganti Tema"
                                 >
                                     {isDark ? <Sun className="w-5 h-5 text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]" /> : <Moon className="w-5 h-5 text-indigo-600" />}
@@ -300,7 +290,7 @@ export default function AuthenticatedLayout({ header, children }) {
 
                                 <button
                                     onClick={() => setShowingNavigationDropdown(!showingNavigationDropdown)}
-                                    className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 md:hidden"
+                                    className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 md:hidden cursor-pointer"
                                 >
                                     {showingNavigationDropdown ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
                                 </button>

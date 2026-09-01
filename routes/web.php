@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\DataManagementController;
+use App\Http\Controllers\DataAutoReportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\AssetDashboardController;
@@ -85,21 +86,31 @@ Route::middleware(['auth'])->group(function () {
     // MODUL MAINTENANCE
     Route::prefix('maintenance')->name('maintenance.')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'maintenance'])->name('dashboard');
-        Route::prefix('data-management')->name('data-management.')->controller(DataManagementController::class)->group(function () {
-            Route::get('/', 'index')->name('index');
-            Route::post('/rpm', 'storeRpm')->name('store-rpm');
-            Route::put('/rpm/{id}', 'updateRpm')->name('update-rpm');
-            Route::delete('/rpm/{id?}', 'destroyRpm')->name('destroy-rpm');
-            Route::post('/rpm/bulk-delete', 'bulkDestroyRpm')->name('bulk-destroy-rpm');
-            Route::post('/rpm/reset', 'resetRpm')->name('reset-rpm');
-            Route::get('/rpm/export', 'exportRpm')->name('export-rpm');
+        
+        Route::prefix('data-management')->name('data-management.')->group(function () {
+            Route::get('/', [DataManagementController::class, 'index'])->name('index');
             
-            Route::post('/smartkey', 'storeSmartkey')->name('store-smartkey');
-            Route::put('/smartkey/{id}', 'updateSmartkey')->name('update-smartkey');
-            Route::delete('/smartkey/{id?}', 'destroySmartkey')->name('destroy-smartkey');
-            Route::post('/smartkey/bulk-delete', 'bulkDestroySmartkey')->name('bulk-destroy-smartkey');
-            Route::post('/smartkey/reset', 'resetSmartkey')->name('reset-smartkey');
-            Route::get('/smartkey/export', 'exportSmartkey')->name('export-smartkey');
+            // --- ENGINE AUTO REPORT (BATCH & SINGLE) ---
+            Route::post('/process-rpm', [DataAutoReportController::class, 'processRpm'])->name('process-rpm');
+            Route::post('/process-smartkey', [DataAutoReportController::class, 'processSmartkey'])->name('process-smartkey');
+            Route::post('/process-rpm-batch', [DataAutoReportController::class, 'processRpmBatch'])->name('process-rpm-batch');
+            Route::post('/process-smartkey-batch', [DataAutoReportController::class, 'processSmartkeyBatch'])->name('process-smartkey-batch');
+
+            // --- MASTER RPM ---
+            Route::post('/rpm', [DataManagementController::class, 'storeRpm'])->name('store-rpm');
+            Route::put('/rpm/{id}', [DataManagementController::class, 'updateRpm'])->name('update-rpm');
+            Route::delete('/rpm/{id?}', [DataManagementController::class, 'destroyRpm'])->name('destroy-rpm');
+            Route::post('/rpm/bulk-delete', [DataManagementController::class, 'bulkDestroyRpm'])->name('bulk-destroy-rpm');
+            Route::post('/rpm/reset', [DataManagementController::class, 'resetRpm'])->name('reset-rpm');
+            Route::get('/rpm/export', [DataManagementController::class, 'exportRpm'])->name('export-rpm');
+            
+            // --- MASTER SMARTKEY ---
+            Route::post('/smartkey', [DataManagementController::class, 'storeSmartkey'])->name('store-smartkey');
+            Route::put('/smartkey/{id}', [DataManagementController::class, 'updateSmartkey'])->name('update-smartkey');
+            Route::delete('/smartkey/{id?}', [DataManagementController::class, 'destroySmartkey'])->name('destroy-smartkey');
+            Route::post('/smartkey/bulk-delete', [DataManagementController::class, 'bulkDestroySmartkey'])->name('bulk-destroy-smartkey');
+            Route::post('/smartkey/reset', [DataManagementController::class, 'resetSmartkey'])->name('reset-smartkey');
+            Route::get('/smartkey/export', [DataManagementController::class, 'exportSmartkey'])->name('export-smartkey');
         });
     });
 
