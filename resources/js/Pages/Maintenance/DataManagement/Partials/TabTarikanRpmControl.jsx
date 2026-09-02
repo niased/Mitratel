@@ -199,7 +199,7 @@ export default function useTabTarikanRpmControl(canWrite) {
                 const currentCount = Math.min(i + batchSize, totalValid);
                 const currentPct = 30 + Math.round((currentCount / totalValid) * 65);
 
-                setRpmStatusText(`XLOOKUP Master Data (${currentCount.toLocaleString('id-ID')} / ${totalValid.toLocaleString('id-ID')})...`);
+                setRpmStatusText(`VLOOKUP dan XLOOKUP Master Data (${currentCount.toLocaleString('id-ID')} / ${totalValid.toLocaleString('id-ID')})...`);
 
                 const res = await axios.post(targetUrl, {
                     rows: chunk,
@@ -237,7 +237,7 @@ export default function useTabTarikanRpmControl(canWrite) {
             });
         } catch (err) {
             console.error(err);
-            const msg = err.response?.data?.message || err.message || 'Gagal menjalankan engine XLOOKUP.';
+            const msg = err.response?.data?.message || err.message || 'Gagal menjalankan engine VLOOKUP dan XLOOKUP.';
             setRpmError(msg);
             setRpmStatusText('Gagal memproses berkas.');
         } finally {

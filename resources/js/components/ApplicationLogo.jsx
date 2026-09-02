@@ -23,7 +23,7 @@ export function ApplicationLogo({
                 <img 
                     src={imageSrc} 
                     alt="Logo DS Mitel" 
-                    className={cn('h-9 sm:h-10 w-auto object-contain shrink-0', imageClassName)}
+                    className={cn('h-10 sm:h-13 w-auto object-contain shrink-0', imageClassName)}
                 />
             ) : (
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-red-600 to-red-500 flex items-center justify-center text-white shrink-0 shadow-sm">
