@@ -15,14 +15,12 @@ import {
     ExternalLink,
     Compass
 } from 'lucide-react';
-
 import Map from '@/components/Map';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent } from '@/components/ui/card';
 
-// 👉 Import Logika & Komponen Telemetri
 import useDriverTracker, { calculateDistanceKm, getJenisPergerakanInfo } from './DriverTracker';
 import DriverTelemetry from './DriverTelemetry';
 
@@ -36,11 +34,10 @@ const DRIVER_MAP_CONFIG = {
         label: 'Tujuan Site',
         color: '#ef4444',
         bg: 'rgba(239,68,68,0.35)',
-    }
+    },
 };
 
 export default function DrivePage({ trip }) {
-    // 🧠 Panggil logika pelacakan dari DriverTracker.jsx
     const {
         status,
         gpsError,
@@ -59,7 +56,6 @@ export default function DrivePage({ trip }) {
     const combat = trip?.combat || {};
     const jenisInfo = useMemo(() => getJenisPergerakanInfo(trip), [trip]);
 
-    // Format Marker Peta
     const mapMarkers = useMemo(() => {
         const list = [];
         if (trip?.destination_lat && trip?.destination_lng) {
@@ -125,7 +121,6 @@ export default function DrivePage({ trip }) {
         <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col justify-between selection:bg-red-500 selection:text-white">
             <Head title={`Tracking Driver - ${combat.asset_name || 'COMBAT'}`} />
 
-            {/* 1. HEADER ATAS RESPONSIF */}
             <header className="w-full bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 shadow-md">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 min-w-0">
@@ -159,7 +154,6 @@ export default function DrivePage({ trip }) {
                                 <span>Mulai Perjalanan</span>
                             </Button>
                         )}
-
                         {status === 'IN_TRANSIT' && isAuthorizedDriver && (
                             <Button 
                                 type="button" 
@@ -171,14 +165,12 @@ export default function DrivePage({ trip }) {
                                 <span>Tiba di Lokasi</span>
                             </Button>
                         )}
-
                         {status === 'IN_TRANSIT' && !isAuthorizedDriver && (
                             <Badge variant="outline" className="bg-sky-500/10 border-sky-500/30 text-sky-400 text-[11px] font-bold px-3 py-1.5 rounded-lg gap-1.5">
                                 <Eye className="w-3.5 h-3.5" />
                                 <span>Mode Pantau</span>
                             </Badge>
                         )}
-
                         {status === 'COMPLETED' && (
                             <Badge variant="outline" className="bg-emerald-500/10 border-emerald-500/30 text-emerald-400 text-[11px] font-bold px-3 py-1.5 rounded-lg gap-1.5">
                                 <ShieldCheck className="w-3.5 h-3.5" />
@@ -189,7 +181,6 @@ export default function DrivePage({ trip }) {
                 </div>
             </header>
 
-            {/* 2. BANNER STATUS DETEKSI GOOGLE MAPS / LATAR BELAKANG */}
             {status === 'IN_TRANSIT' && (isNavigatingMaps || isAppInBackground) && isAuthorizedDriver && (
                 <div className="bg-amber-950/80 border-b border-amber-800/80 px-4 sm:px-6 py-2.5">
                     <div className="max-w-7xl mx-auto flex items-center gap-2 text-amber-300 text-xs sm:text-sm">
@@ -201,7 +192,6 @@ export default function DrivePage({ trip }) {
                 </div>
             )}
 
-            {/* BANNER MODE PANTAU (JIKA DIBUKA DI HP KEDUA) */}
             {status === 'IN_TRANSIT' && !isAuthorizedDriver && (
                 <div className="bg-sky-950/80 border-b border-sky-800/80 px-4 sm:px-6 py-2.5">
                     <div className="max-w-7xl mx-auto flex items-center gap-2 text-sky-300 text-xs sm:text-sm">
@@ -213,11 +203,8 @@ export default function DrivePage({ trip }) {
                 </div>
             )}
 
-            {/* 3. KONTEN UTAMA: LAYOUT GRID ADAPTIF (HP & TABLET) */}
             <main className="flex-1 w-full max-w-7xl mx-auto p-3 sm:p-5 lg:p-6">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-start">
-                    
-                    {/* SISI KIRI: PETA REAL-TIME */}
                     <div className="lg:col-span-7 xl:col-span-7 flex flex-col gap-3">
                         {gpsError && (
                             <Alert className="bg-rose-950/95 border-rose-800 text-rose-300 py-2.5 px-3.5 rounded-xl shadow-xl flex items-center justify-between">
@@ -237,7 +224,6 @@ export default function DrivePage({ trip }) {
                                 )}
                             </Alert>
                         )}
-
                         <div className="w-full h-[320px] sm:h-[400px] lg:h-[580px] bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl relative">
                             <Map 
                                 data={mapMarkers}
@@ -259,17 +245,13 @@ export default function DrivePage({ trip }) {
                         </div>
                     </div>
 
-                    {/* SISI KANAN: PANEL TELEMETRI, GRAFIK & KARTU RUTE */}
                     <div className="lg:col-span-5 xl:col-span-5 flex flex-col gap-3.5 sm:gap-4">
-                        
-                        {/* A. Komponen Telemetri & Grafik Kecepatan */}
                         <DriverTelemetry 
                             currentCoords={currentCoords}
                             remainingDistanceKm={remainingDistanceKm}
                             speedHistory={speedHistory}
                         />
 
-                        {/* B. Kartu Informasi Rute & Navigasi Eksternal */}
                         <Card className="bg-slate-900 border-slate-800 rounded-2xl shadow-sm overflow-hidden">
                             <CardContent className="p-4 space-y-3.5">
                                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
@@ -309,9 +291,8 @@ export default function DrivePage({ trip }) {
                                     </div>
                                 </div>
 
-                                {/* 👉 Tombol Buka Navigasi dengan Deteksi Klik */}
                                 <Button 
-                                    type="button"
+                                    type="button" 
                                     onClick={() => handleOpenGoogleMapsClick(googleMapsNavUrl)}
                                     className="w-full py-3 h-auto bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-blue-600/25 active:scale-98 transition-all cursor-pointer flex items-center justify-center gap-2"
                                 >
@@ -321,7 +302,6 @@ export default function DrivePage({ trip }) {
                             </CardContent>
                         </Card>
                     </div>
-
                 </div>
             </main>
         </div>

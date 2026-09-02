@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import axios from 'axios';
 
-// Helper Rumus Haversine: Hitung sisa jarak lurus ke tujuan (dalam KM)
+// Helper Rumus Haversine: Hitung jarak dalam KM
 export const calculateDistanceKm = (lat1, lon1, lat2, lon2) => {
     if (!lat1 || !lon1 || !lat2 || !lon2) return null;
     const R = 6371;
@@ -22,13 +22,12 @@ export const getJenisPergerakanInfo = (trip) => {
     if (!trip) {
         return { label: 'Mobilisasi Unit', badgeClass: 'bg-slate-500/10 text-slate-400 border-slate-500/20' };
     }
-
     const jenisId = trip.jenis_rute || trip.ip_gps;
     if (jenisId === 'DEPLOY') return { label: 'Deploy (Gudang ke Site)', badgeClass: 'bg-sky-500/10 text-sky-400 border-sky-500/20' };
     if (jenisId === 'PENARIKAN') return { label: 'Penarikan (Site ke Gudang)', badgeClass: 'bg-amber-500/10 text-amber-400 border-amber-500/20' };
     if (jenisId === 'RELOKASI') return { label: 'Relokasi (Antar Site)', badgeClass: 'bg-purple-500/10 text-purple-400 border-purple-500/20' };
     if (jenisId === 'MAINTENANCE') return { label: 'Maintenance (Ke Workshop)', badgeClass: 'bg-rose-500/10 text-rose-400 border-rose-500/20' };
-
+    
     const dest = (trip.destination_name || '').toLowerCase();
     if (dest.includes('workshop') || dest.includes('repair') || dest.includes('perbaikan')) {
         return { label: 'Maintenance (Ke Workshop)', badgeClass: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' };
@@ -50,7 +49,6 @@ const getOrCreateDeviceToken = () => {
     return token;
 };
 
-// 👉 CUSTOM HOOK LOGIKA UTAMA TRACKER
 export default function useDriverTracker(trip) {
     const [status, setStatus] = useState(trip?.status || 'ASSIGNED');
     const [isGpsActive, setIsGpsActive] = useState(false);
@@ -58,12 +56,9 @@ export default function useDriverTracker(trip) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [lastPingTime, setLastPingTime] = useState(null);
     const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
-
-    // 👉 STATE DETEKSI GOOGLE MAPS & BACKGROUND
     const [isAppInBackground, setIsAppInBackground] = useState(false);
     const [isNavigatingMaps, setIsNavigatingMaps] = useState(false);
 
-    // Titik awal supir
     const [currentCoords, setCurrentCoords] = useState(() => {
         const latest = trip?.latest_coordinate || trip?.latestCoordinate;
         if (latest?.latitude && latest?.longitude) {
@@ -99,20 +94,17 @@ export default function useDriverTracker(trip) {
     const lastPingTimestampRef = useRef(0);
     const lastValidCoordRef = useRef(null);
 
-    // Verifikasi identitas HP Driver Utama vs Mode Pantau
     const isAuthorizedDriver = useMemo(() => {
         if (status === 'ASSIGNED') return true;
         if (lockedDeviceToken) return lockedDeviceToken === myDeviceToken;
         return true;
     }, [status, lockedDeviceToken, myDeviceToken]);
 
-    // Metadata jenis pergerakan trip
     const jenisPergerakan = useMemo(() => getJenisPergerakanInfo(trip), [trip]);
 
-    // Kalkulasi sisa jarak otomatis ke target (KM)
     const remainingDistanceKm = useMemo(() => {
-        const destLat = trip?.destination_latitude || trip?.dest_lat;
-        const destLon = trip?.destination_longitude || trip?.dest_lon;
+        const destLat = trip?.destination_lat;
+        const destLon = trip?.destination_lng;
         if (!currentCoords?.latitude || !currentCoords?.longitude || !destLat || !destLon) {
             return null;
         }
@@ -124,7 +116,6 @@ export default function useDriverTracker(trip) {
         );
     }, [currentCoords, trip]);
 
-    // 🔒 WAKE LOCK HANDLER
     const requestWakeLock = useCallback(async () => {
         if ('wakeLock' in navigator && !wakeLockRef.current) {
             try {
@@ -132,9 +123,7 @@ export default function useDriverTracker(trip) {
                 wakeLockRef.current.addEventListener('release', () => {
                     wakeLockRef.current = null;
                 });
-            } catch (err) {
-                // WakeLock silent error
-            }
+            } catch (err) {}
         }
     }, []);
 
@@ -146,7 +135,6 @@ export default function useDriverTracker(trip) {
         }
     }, []);
 
-    // 🔍 DETEKSI VISIBILITY CHANGE & RE-ACQUIRE WAKE LOCK
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.hidden) {
@@ -154,7 +142,6 @@ export default function useDriverTracker(trip) {
             } else {
                 setIsAppInBackground(false);
                 setIsNavigatingMaps(false);
-                // WakeLock otomatis mati saat minimize di Android/iOS, minta kembali saat aktif
                 if (status === 'IN_TRANSIT' && isAuthorizedDriver) {
                     requestWakeLock();
                 }
@@ -175,7 +162,6 @@ export default function useDriverTracker(trip) {
         };
     }, [status, isAuthorizedDriver, requestWakeLock]);
 
-    // Cleanup saat komponen unmount
     useEffect(() => {
         isMountedRef.current = true;
         return () => {
@@ -183,11 +169,11 @@ export default function useDriverTracker(trip) {
         };
     }, []);
 
-    // 1. PING GPS
     const sendGpsPing = useCallback(async (lat, lng, speed, accuracy, heading = null) => {
         if (!isAuthorizedDriver || !token) return;
+
         const now = Date.now();
-        if (now - lastPingTimestampRef.current < 4000) return; // Throttle 4 detik
+        if (now - lastPingTimestampRef.current < 4000) return;
         lastPingTimestampRef.current = now;
 
         try {
@@ -207,24 +193,22 @@ export default function useDriverTracker(trip) {
                 minute: '2-digit',
                 second: '2-digit',
             });
-
             setLastPingTime(timeStr);
             setGpsError(null);
             setSpeedHistory((prev) => [...prev, { time: timeStr, speed: parseFloat(speed) || 0 }].slice(-15));
         } catch (err) {
             if (!isMountedRef.current) return;
             if (err.response?.status === 403) {
-                setGpsError('Perangkat ini bukan driver utama. Masuk ke Mode Pantau.');
+                setGpsError('Perangkat ini bukan driver utama. Beralih ke Mode Pantau.');
                 stopGpsWatcher();
             }
         }
     }, [token, isAuthorizedDriver, myDeviceToken]);
 
-    // 2. WATCHER SENSOR GPS HP
     const startGpsWatcher = useCallback(() => {
         if (!isAuthorizedDriver) return;
         if (!navigator.geolocation) {
-            setGpsError('Browser HP kamu tidak mendukung fitur GPS.');
+            setGpsError('Browser tidak mendukung fitur GPS.');
             return;
         }
 
@@ -242,8 +226,8 @@ export default function useDriverTracker(trip) {
                 const { latitude, longitude, speed, accuracy, heading } = position.coords;
                 lastValidCoordRef.current = { latitude, longitude };
                 setGpsError(null);
-
                 const speedKmh = speed && speed > 0.5 ? (speed * 3.6).toFixed(1) : '0.0';
+
                 setCurrentCoords({
                     latitude,
                     longitude,
@@ -257,9 +241,9 @@ export default function useDriverTracker(trip) {
             (error) => {
                 if (!isMountedRef.current) return;
                 if (error.code === error.PERMISSION_DENIED) {
-                    setGpsError('Izin GPS ditolak. Buka pengaturan browser HP dan izinkan akses lokasi.');
+                    setGpsError('Izin GPS ditolak. Izinkan akses lokasi di browser HP.');
                 } else if (error.code === error.TIMEOUT) {
-                    setGpsError('Koneksi satelit GPS melambat. Memperbarui sinyal...');
+                    setGpsError('Sinyal GPS lambat. Menghubungkan ulang...');
                 } else {
                     setGpsError('Mencari sinyal satelit GPS...');
                 }
@@ -277,7 +261,6 @@ export default function useDriverTracker(trip) {
         releaseWakeLock();
     }, [releaseWakeLock]);
 
-    // 3. POLLING POSISI UNTUK MODE PANTAU (HP KEDUA)
     const fetchObserverLiveStatus = useCallback(async () => {
         if (!token) return;
         try {
@@ -296,9 +279,7 @@ export default function useDriverTracker(trip) {
                     accuracy: data.driver_coords.accuracy || 0,
                     heading: data.driver_coords.heading || 0,
                 });
-
                 if (data.driver_coords.recorded_at) setLastPingTime(data.driver_coords.recorded_at);
-
                 setSpeedHistory((prev) => [
                     ...prev,
                     {
@@ -307,9 +288,7 @@ export default function useDriverTracker(trip) {
                     },
                 ].slice(-15));
             }
-        } catch (err) {
-            console.error('Gagal menarik data live driver:', err);
-        }
+        } catch (err) {}
     }, [token]);
 
     useEffect(() => {
@@ -328,7 +307,6 @@ export default function useDriverTracker(trip) {
         };
     }, [status, isAuthorizedDriver, startGpsWatcher, stopGpsWatcher, fetchObserverLiveStatus]);
 
-    // 4. ACTION HANDLERS
     const handleStartTrip = async () => {
         if (!token) return;
         setIsSubmitting(true);
@@ -346,12 +324,10 @@ export default function useDriverTracker(trip) {
 
     const handleCompleteTrip = () => {
         if (!confirm('Apakah unit COMBAT sudah tiba di lokasi tujuan dengan aman?')) return;
-
         const executeComplete = async (lat, lng) => {
             stopGpsWatcher();
             setStatus('COMPLETED');
             setIsSubmitting(false);
-
             try {
                 await axios.post(`/track-api/${token}/complete`, {
                     final_latitude: lat,
@@ -373,7 +349,7 @@ export default function useDriverTracker(trip) {
                 (pos) => executeComplete(pos.coords.latitude, pos.coords.longitude),
                 () => {
                     if (isMountedRef.current) setIsSubmitting(false);
-                    alert('GPS belum mengunci posisi. Pastikan izin lokasi browser HP aktif.');
+                    alert('GPS belum mengunci posisi. Pastikan izin lokasi browser aktif.');
                 },
                 { enableHighAccuracy: true, timeout: 5000 }
             );

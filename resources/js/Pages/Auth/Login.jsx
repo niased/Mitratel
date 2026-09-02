@@ -99,7 +99,7 @@ export default function Login({ status, canResetPassword }) {
             <div className="absolute bottom-1/4 right-1/3 translate-x-1/2 translate-y-1/2 w-[450px] h-[450px] bg-rose-700/10 blur-[130px] rounded-full pointer-events-none" />
 
             {/* ========================================================================= */}
-            {/* 1. TOP HEADER (LOGO BERSIH TANPA BADGE KANAN) */}
+            {/* 1. TOP HEADER (LOGO DENGAN TEKS PUTIH TERANG) */}
             {/* ========================================================================= */}
             <header className="w-full max-w-4xl mx-auto flex items-center justify-start z-30 mb-4 sm:mb-6">
                 <Link 
@@ -107,7 +107,11 @@ export default function Login({ status, canResetPassword }) {
                     className="flex items-center transition-transform duration-200 hover:scale-105"
                     title="Kembali ke Halaman Utama"
                 >
-                    <ApplicationLogo imageClassName="h-9 sm:h-11" showText={true} />
+                    <ApplicationLogo 
+                        imageClassName="h-9 sm:h-11" 
+                        showText={true} 
+                        forceWhite={true} 
+                    />
                 </Link>
             </header>
 
@@ -362,7 +366,7 @@ export default function Login({ status, canResetPassword }) {
                             </div>
                         </div>
 
-                        {/* WINDOWS BOTTOM TASKBAR (TANPA BADGE SECURE 5G) */}
+                        {/* WINDOWS BOTTOM TASKBAR */}
                         <div className="w-full h-10 bg-slate-900/95 backdrop-blur-md border-t border-slate-800/80 px-4 flex items-center justify-between text-xs text-slate-300 select-none z-30">
                             <div className="flex items-center gap-2">
                                 <button className="flex items-center gap-2 px-3 py-1 bg-red-600 hover:bg-red-500 text-white rounded-lg font-semibold text-xs transition-all shadow-md shadow-red-600/20 active:scale-95 cursor-pointer">

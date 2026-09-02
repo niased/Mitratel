@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState, useCallback } from 'react';
+import React, { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { 
     History, Plus, ChevronDown, Route as RouteIcon, RotateCcw
@@ -14,6 +14,8 @@ import Map from '@/components/Map';
 import ModalTrackingCombat from './ModalTrackingCombat';
 import EditTrackCombat from './EditTrackCombat';
 import { parseCoordinates } from '@/components/MapControls';
+import { calculateBearing } from '@/lib/geoUtils';
+import { createCombatTruckIcon } from '@/components/CombatMovingMarker';
 
 export default function MapCombat({ 
     activeMapRaw = [], 
@@ -36,15 +38,16 @@ export default function MapCombat({
     const [selectedTrip, setSelectedTrip] = useState(() => activeTrip || activeTripsRaw[0] || null);
     const [liveGpsCoords, setLiveGpsCoords] = useState([]);
     const [liveDriverMarker, setLiveDriverMarker] = useState(null);
-    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [driverBearing, setDriverBearing] = useState(0);
+    const lastDriverPosRef = useRef(null);
 
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [isCreatingRoute, setIsCreatingRoute] = useState(false);
     const [isEditingRoute, setIsEditingRoute] = useState(false);
     const [draftLocation, setDraftLocation] = useState(null);
     const [draftSelectedCombat, setDraftSelectedCombat] = useState(null);
     const [showDetailCard, setShowDetailCard] = useState(true);
 
-    // 1. Tarik daftar riwayat / penugasan rute dari backend
     const fetchTripsList = useCallback(async () => {
         try {
             const res = await axios.get('/combat-api/history?per_page=50');
@@ -67,11 +70,11 @@ export default function MapCombat({
         fetchTripsList();
     }, [viewMode, fetchTripsList]);
 
-    // 2. Tarik jejak koordinat riil GPS supir dari database (Breadcrumb Trail Awal)
     const fetchGpsTrail = useCallback(async (trip) => {
         if (!trip?.id) {
             setLiveGpsCoords([]);
             setLiveDriverMarker(null);
+            lastDriverPosRef.current = null;
             return;
         }
         try {
@@ -81,14 +84,25 @@ export default function MapCombat({
 
             if (coords.length > 0) {
                 const last = coords[coords.length - 1];
-                setLiveDriverMarker({ latitude: last[1], longitude: last[0] });
+                let initialBearing = 0;
+                if (coords.length >= 2) {
+                    const prev = coords[coords.length - 2];
+                    initialBearing = calculateBearing(prev[1], prev[0], last[1], last[0]);
+                    setDriverBearing(initialBearing);
+                }
+                lastDriverPosRef.current = { lat: last[1], lng: last[0] };
+                setLiveDriverMarker({ 
+                    latitude: last[1], 
+                    longitude: last[0], 
+                    speed: 0,
+                    bearing: initialBearing 
+                });
             }
         } catch (err) {
             setLiveGpsCoords([]);
         }
     }, []);
 
-    // 3. Handler Refresh Manual
     const handleManualRefresh = async () => {
         setIsRefreshing(true);
         try {
@@ -103,7 +117,6 @@ export default function MapCombat({
         }
     };
 
-    // 4. Real-time WebSocket Pusher (Berjalan otomatis di background)
     useEffect(() => {
         if (typeof window !== 'undefined' && window.Echo) {
             const channel = window.Echo.channel('combat-tracking');
@@ -112,7 +125,28 @@ export default function MapCombat({
                 const { trip_id, latitude, longitude, speed } = event;
 
                 if (selectedTrip && Number(selectedTrip.id) === Number(trip_id)) {
-                    setLiveDriverMarker({ latitude, longitude, speed });
+                    let newBearing = driverBearing;
+
+                    if (lastDriverPosRef.current) {
+                        const calculated = calculateBearing(
+                            lastDriverPosRef.current.lat,
+                            lastDriverPosRef.current.lng,
+                            latitude,
+                            longitude
+                        );
+                        if (calculated !== 0) {
+                            newBearing = calculated;
+                            setDriverBearing(calculated);
+                        }
+                    }
+                    lastDriverPosRef.current = { lat: latitude, lng: longitude };
+
+                    setLiveDriverMarker({ 
+                        latitude, 
+                        longitude, 
+                        speed, 
+                        bearing: newBearing 
+                    });
                     
                     setLiveGpsCoords((prevCoords) => {
                         const newCoord = [longitude, latitude];
@@ -137,7 +171,7 @@ export default function MapCombat({
                 window.Echo.leaveChannel('combat-tracking');
             };
         }
-    }, [selectedTrip]);
+    }, [selectedTrip, driverBearing]);
 
     const handleSelectTripFromDropdown = (trip) => {
         setIsCreatingRoute(false);
@@ -192,6 +226,7 @@ export default function MapCombat({
             setIsEditingRoute(false);
             setLiveGpsCoords([]);
             setLiveDriverMarker(null);
+            lastDriverPosRef.current = null;
             fetchTripsList();
         } catch (err) {
             alert(err.response?.data?.message || 'Gagal menghapus penugasan.');
@@ -204,7 +239,6 @@ export default function MapCombat({
         }
     };
 
-    // 5. Marker Pin Lokasi di Peta
     const finalMapData = useMemo(() => {
         if (viewMode === 'dashboard') {
             return [...activeMapRaw];
@@ -292,15 +326,26 @@ export default function MapCombat({
                     }
 
                     if (driverLat && driverLng) {
+                        const currentBearing = liveDriverMarker?.bearing || driverBearing || 0;
+                        const currentSpeed = parseFloat(liveDriverMarker?.speed || 0);
+
                         data.push({
                             id: 'selected-driver-live',
                             latitude: driverLat,
                             longitude: driverLng,
                             is_driver: true,
+                            bearing: currentBearing,
+                            speed: currentSpeed,
+                            customIcon: createCombatTruckIcon({
+                                bearing: currentBearing,
+                                isMoving: currentSpeed > 0.5,
+                                status: 'IN_TRANSIT',
+                                assetName: selectedTrip.combat?.asset_name || 'Unit COMBAT'
+                            }),
                             properties: {
                                 asset_name: `POSISI DRIVER: ${selectedTrip.pic_name || 'Tim Pelaksana'}`,
                                 status_combat: 'IN TRANSIT',
-                                note: 'Sedang melaju live'
+                                note: `Kecepatan: ${currentSpeed.toFixed(1)} km/h • Bearing: ${currentBearing}°`
                             }
                         });
                     }
@@ -309,7 +354,7 @@ export default function MapCombat({
             return data;
         }
         return [];
-    }, [activeMapRaw, viewMode, isCreatingRoute, draftLocation, draftSelectedCombat, selectedTrip, isEditingRoute, liveGpsCoords, liveDriverMarker]);
+    }, [activeMapRaw, viewMode, isCreatingRoute, draftLocation, draftSelectedCombat, selectedTrip, isEditingRoute, liveGpsCoords, liveDriverMarker, driverBearing]);
 
     const activePolylineCoords = useMemo(() => {
         if (selectedTripInfo && Array.isArray(routeHistory) && routeHistory.length >= 2) {
@@ -337,7 +382,6 @@ export default function MapCombat({
     return (
         <div className="bg-white/80 dark:bg-slate-900/50 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-xl overflow-hidden shadow-xs relative">
             <div className="px-4 py-2.5 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between flex-wrap gap-2.5 relative z-10">
-                {/* SWITCH MODE: DASHBOARD VS RUTE */}
                 <div className="flex items-center gap-1 bg-slate-200/60 dark:bg-slate-800/60 p-1 rounded-lg">
                     <button 
                         onClick={() => { 
@@ -375,11 +419,9 @@ export default function MapCombat({
                     </button>
                 </div>
                 
-                {/* TOOLBAR KANAN */}
                 <div className="flex items-center gap-2 flex-wrap">
                     {viewMode === 'rute' && (
                         <>
-                            {/* Tombol Buat Rute Baru */}
                             <button 
                                 onClick={() => {
                                     setIsCreatingRoute(true);
@@ -388,7 +430,7 @@ export default function MapCombat({
                                     setDraftLocation(null);
                                     setDraftSelectedCombat(null);
                                     setShowDetailCard(true);
-                                }}
+                                }} 
                                 className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-all duration-200 cursor-pointer shadow-xs active:scale-95 ${
                                     isCreatingRoute ? 'bg-amber-500 text-white shadow-amber-500/20' : 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/20'
                                 }`}
@@ -397,7 +439,6 @@ export default function MapCombat({
                                 <span>Buat Rute Baru</span>
                             </button>
 
-                            {/* Tombol Refresh (Flat / Tanpa Card) */}
                             <button 
                                 type="button"
                                 onClick={handleManualRefresh}
@@ -409,7 +450,6 @@ export default function MapCombat({
                                 <span>Refresh</span>
                             </button>
 
-                            {/* Tombol Riwayat Trip (Flat / Tanpa Card) */}
                             <button 
                                 onClick={() => setViewMode('history')} 
                                 className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors cursor-pointer"
@@ -418,7 +458,6 @@ export default function MapCombat({
                                 <span>Riwayat Trip</span>
                             </button>
 
-                            {/* Dropdown Pemilihan Rute */}
                             <DropdownMenu onOpenChange={(open) => { if (!open) setSearchTrip(''); }}>
                                 <DropdownMenuTrigger className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer outline-none max-w-[220px]">
                                     <RouteIcon className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />

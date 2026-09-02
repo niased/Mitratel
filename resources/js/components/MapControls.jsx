@@ -7,20 +7,28 @@ export const MAP_STYLES = {
         style: {
             version: 8,
             sources: {
-                'carto-dark': {
+                'esri-dark': {
                     type: 'raster',
                     tiles: [
-                        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-                        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-                        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-                        'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+                        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
                     ],
                     tileSize: 256,
-                    maxzoom: 19,
-                    attribution: '&copy; CARTO',
+                    maxzoom: 16,
+                    attribution: '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+                },
+                'esri-dark-labels': {
+                    type: 'raster',
+                    tiles: [
+                        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}'
+                    ],
+                    tileSize: 256,
+                    maxzoom: 16,
                 },
             },
-            layers: [{ id: 'carto-dark-layer', type: 'raster', source: 'carto-dark' }],
+            layers: [
+                { id: 'esri-dark-layer', type: 'raster', source: 'esri-dark' },
+                { id: 'esri-dark-labels-layer', type: 'raster', source: 'esri-dark-labels' },
+            ],
         },
     },
     satellite: {
@@ -177,10 +185,10 @@ export default function MapControls({
                 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
             `}</style>
 
-            {/* 👉 KONTROL ATAS: DESAIN HITAM ELEGAN (MODE PETA, ZOOM GLOBE, CLUSTER ON/OFF) */}
+            {/* KONTROL ATAS: MODE PETA, ZOOM GLOBE, CLUSTER ON/OFF */}
             <div className="absolute top-4 left-4 z-10 flex items-center gap-2 max-w-[calc(100vw-80px)] flex-wrap">
                 
-                {/* 1. Mode Gaya Peta (Dark Card Pill) */}
+                {/* 1. Mode Gaya Peta */}
                 <div className="bg-slate-950/90 dark:bg-slate-950/95 backdrop-blur-md p-1 rounded-xl border border-slate-800/90 shadow-2xl flex items-center gap-1">
                     {Object.keys(MAP_STYLES).map((key) => (
                         <button
@@ -198,7 +206,7 @@ export default function MapControls({
                     ))}
                 </div>
 
-                {/* 2. Tombol Reset View Indonesia (Dark Icon Button) */}
+                {/* 2. Tombol Reset View Indonesia */}
                 <button
                     type="button"
                     onClick={onResetView}
@@ -208,7 +216,7 @@ export default function MapControls({
                     <Globe className="w-4 h-4" />
                 </button>
 
-                {/* 3. Tombol Cluster ON/OFF (Desain Hitam Elegan dengan Indikator Putih Bersih) */}
+                {/* 3. Tombol Cluster ON/OFF */}
                 <button
                     type="button"
                     onClick={onToggleCluster}

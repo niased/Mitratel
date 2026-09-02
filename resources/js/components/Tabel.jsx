@@ -23,8 +23,14 @@ export default function Tabel({
     isProcessing = false,
     emptyMessage = "Belum ada data.",
     showCheckbox = true,
+    selectable = true,
     showAction = true,
 }) {
+    // Otomatis sembunyikan kolom aksi jika tidak ada seleksi dan tidak ada tombol edit
+    const hasSelection = Boolean(showCheckbox && selectable && (onSelectRow || onSelectAll));
+    const hasRowAction = Boolean(showAction && onEditRow);
+    const hasActionCol = hasSelection || hasRowAction;
+
     const isAllSelected = data.length > 0 && data.every(item => selectedIds.includes(getItemId(item)));
 
     return (
@@ -43,10 +49,12 @@ export default function Tabel({
                 <TableHeader className="bg-slate-100/80 dark:bg-slate-800/80">
                     <TableRow>
                         {/* KOLOM AKSI & CHECKBOX */}
-                        {showCheckbox && (
+                        {hasActionCol && (
                             <TableHead className="w-20 text-center sticky left-0 z-20 bg-slate-100 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-800">
                                 <div className="flex items-center justify-center gap-2">
-                                    <Checkbox checked={isAllSelected} onCheckedChange={onSelectAll} />
+                                    {hasSelection && (
+                                        <Checkbox checked={isAllSelected} onCheckedChange={onSelectAll} />
+                                    )}
                                     <span>Aksi</span>
                                 </div>
                             </TableHead>
@@ -73,12 +81,14 @@ export default function Tabel({
                             return (
                                 <TableRow key={itemId} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                                     {/* CELL AKSI & CHECKBOX */}
-                                    {showCheckbox && (
+                                    {hasActionCol && (
                                         <TableCell className="sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-100/90 dark:group-hover:bg-slate-800/90 border-r border-slate-200 dark:border-slate-800 text-center">
                                             <div className="flex items-center justify-center gap-2">
-                                                <Checkbox checked={isSelected} onCheckedChange={() => onSelectRow?.(itemId)} />
+                                                {hasSelection && (
+                                                    <Checkbox checked={isSelected} onCheckedChange={() => onSelectRow?.(itemId)} />
+                                                )}
                                                 
-                                                {showAction && onEditRow && (
+                                                {hasRowAction && (
                                                     <Button
                                                         type="button"
                                                         variant="ghost"
@@ -117,7 +127,7 @@ export default function Tabel({
                         })
                     ) : (
                         <TableRow>
-                            <TableCell colSpan={columns.length + (showCheckbox ? 2 : 1)} className="h-24 text-center text-slate-400 dark:text-slate-500">
+                            <TableCell colSpan={columns.length + (hasActionCol ? 2 : 1)} className="h-24 text-center text-slate-400 dark:text-slate-500">
                                 {emptyMessage}
                             </TableCell>
                         </TableRow>

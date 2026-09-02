@@ -23,6 +23,7 @@ class DataAutoReportController extends Controller
 
     /**
      * Engine High-Speed Batch: Aiven PostgreSQL & Vercel Optimized
+     * Mendukung mode XLOOKUP Preview (preview_only) & Commit Insert/Update
      */
     public function processRpmBatch(Request $request): JsonResponse
     {
@@ -31,6 +32,7 @@ class DataAutoReportController extends Controller
             return response()->json(['message' => 'Tidak ada baris data yang dikirim.'], 400);
         }
 
+        $previewOnly = $request->boolean('preview_only', false);
         $now = now();
         $rpmIds = [];
         $sanitizedRows = [];
@@ -100,29 +102,69 @@ class DataAutoReportController extends Controller
                 'inserted' => 0,
                 'updated'  => 0,
                 'skipped'  => $skippedCount,
+                'rows'     => [],
             ]);
         }
 
         $uniqueIds  = array_values(array_unique($rpmIds));
         $allInserts = array_values($sanitizedRows);
 
-        DB::beginTransaction();
         try {
-            // Cek data yang sudah ada di Master Data
-            $existingIds = DB::table('rpm_masters')
+            // Auto XLOOKUP ke tabel Master Data RPM
+            $existingMasters = DB::table('rpm_masters')
                 ->whereIn('rpm_id', $uniqueIds)
-                ->pluck('rpm_id')
+                ->pluck('approve', 'rpm_id')
                 ->toArray();
 
+            $existingIds   = array_keys($existingMasters);
             $updatedCount  = count($existingIds);
             $insertedCount = count($uniqueIds) - $updatedCount;
 
-            // Hapus data lama yang akan ditimpa
+            // =========================================================================
+            // JIKA HANYA MODE PRATINJAU (XLOOKUP & CEK APPROVE N/A SEBELUM COMMIT)
+            // =========================================================================
+            if ($previewOnly) {
+                $previewList = [];
+
+                foreach ($allInserts as $row) {
+                    $exists = array_key_exists($row['rpm_id'], $existingMasters);
+                    
+                    if ($exists) {
+                        $oldApprove = $existingMasters[$row['rpm_id']] ?? '-';
+                        $previewList[] = array_merge($row, [
+                            'is_new'         => false,
+                            'xlookup_status' => 'UPDATE',
+                            'old_approve'    => $oldApprove,
+                            'status_desc'    => "Update ({$oldApprove} → {$row['approve']})",
+                        ]);
+                    } else {
+                        $previewList[] = array_merge($row, [
+                            'is_new'         => true,
+                            'xlookup_status' => '#N/A',
+                            'old_approve'    => '#N/A',
+                            'status_desc'    => '#N/A (Data Baru)',
+                        ]);
+                    }
+                }
+
+                return response()->json([
+                    'status'   => 'preview',
+                    'inserted' => $insertedCount, // Jumlah data baru (#N/A)
+                    'updated'  => $updatedCount,  // Jumlah data update status
+                    'skipped'  => $skippedCount,
+                    'rows'     => $previewList,
+                ]);
+            }
+
+            // =========================================================================
+            // EKSEKUSI COMMIT PERMANEN KE DATABASE MASTER DATA
+            // =========================================================================
+            DB::beginTransaction();
+
             if (!empty($existingIds)) {
                 DB::table('rpm_masters')->whereIn('rpm_id', $existingIds)->delete();
             }
 
-            // Insert massal data terbaru
             if (!empty($allInserts)) {
                 foreach (array_chunk($allInserts, 500) as $chunk) {
                     DB::table('rpm_masters')->insert($chunk);
@@ -138,7 +180,9 @@ class DataAutoReportController extends Controller
                 'skipped'  => $skippedCount,
             ]);
         } catch (\Throwable $e) {
-            DB::rollBack();
+            if (!$previewOnly) {
+                DB::rollBack();
+            }
             Log::error("Process RPM Batch Error: " . $e->getMessage());
             return response()->json(['message' => 'Gagal memproses batch: ' . $e->getMessage()], 500);
         }
@@ -154,6 +198,7 @@ class DataAutoReportController extends Controller
             return response()->json(['message' => 'Tidak ada baris data yang dikirim.'], 400);
         }
 
+        $previewOnly = $request->boolean('preview_only', false);
         $now = now();
         $sns = [];
         $sanitizedRows = [];
@@ -177,15 +222,41 @@ class DataAutoReportController extends Controller
         }
 
         if (empty($sns)) {
-            return response()->json(['status' => 'success', 'synced' => 0]);
+            return response()->json(['status' => 'success', 'synced' => 0, 'rows' => []]);
         }
 
         $uniqueSns   = array_values(array_unique($sns));
         $allInserts  = array_values($sanitizedRows);
         $syncedCount = count($uniqueSns);
 
-        DB::beginTransaction();
         try {
+            // Cek data yang sudah ada di Master Data SmartKey
+            $existingSns = DB::table('smartkey_masters')
+                ->whereIn('serial_number', $uniqueSns)
+                ->pluck('status_aktifitas', 'serial_number')
+                ->toArray();
+
+            if ($previewOnly) {
+                $previewList = [];
+                foreach ($allInserts as $row) {
+                    $exists = array_key_exists($row['serial_number'], $existingSns);
+                    $previewList[] = array_merge($row, [
+                        'is_new'         => !$exists,
+                        'xlookup_status' => !$exists ? '#N/A (SN Baru)' : 'Update Status',
+                        'old_status'     => $exists ? ($existingSns[$row['serial_number']] ?? '-') : '#N/A',
+                    ]);
+                }
+
+                return response()->json([
+                    'status' => 'preview',
+                    'total'  => $syncedCount,
+                    'synced' => count($existingSns),
+                    'new'    => $syncedCount - count($existingSns),
+                    'rows'   => $previewList,
+                ]);
+            }
+
+            DB::beginTransaction();
             DB::table('smartkey_masters')->whereIn('serial_number', $uniqueSns)->delete();
 
             if (!empty($allInserts)) {
@@ -201,7 +272,9 @@ class DataAutoReportController extends Controller
                 'synced' => $syncedCount,
             ]);
         } catch (\Throwable $e) {
-            DB::rollBack();
+            if (!$previewOnly) {
+                DB::rollBack();
+            }
             Log::error("Process SmartKey Batch Error: " . $e->getMessage());
             return response()->json(['message' => 'Gagal memproses batch: ' . $e->getMessage()], 500);
         }

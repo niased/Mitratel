@@ -50,11 +50,11 @@ function FilterMultiSelect({ options = [], selectedValues = [], onChange, placeh
 
     return (
         <DropdownMenu onOpenChange={(open) => { if (!open) setSearch(''); }}>
-            <DropdownMenuTrigger className="w-full bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 h-9 px-3 rounded-lg flex items-center justify-between text-xs font-medium hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors focus:outline-none focus:ring-1 focus:ring-slate-300 dark:focus:ring-slate-700 shadow-sm">
+            <DropdownMenuTrigger className="w-full bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 h-9 px-3 rounded-lg flex items-center justify-between text-xs font-medium hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors focus:outline-none focus:ring-1 focus:ring-slate-300 dark:focus:ring-slate-700 shadow-sm cursor-pointer">
                 <span className="truncate font-normal">{getTriggerLabel()}</span>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-2" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-[var(--anchor-width)] max-h-64 overflow-y-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 z-50 shadow-md p-1">
+            <DropdownMenuContent className="w-[var(--anchor-width)] min-w-[12rem] max-h-64 overflow-y-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 z-50 shadow-md p-1">
                 {showSearch && (
                     <DropdownMenuSearchInput
                         value={search}
@@ -124,6 +124,11 @@ export default function DashboardCombat({
 
     const [liveCombats, setLiveCombats] = useState(initialList);
 
+    // Sinkronisasi data saat filter atau props berubah
+    useEffect(() => {
+        setLiveCombats(initialList);
+    }, [initialList]);
+
     const listStatus = options.status_combat || options.status || [];
     const listType = options.type_combat || options.tipe || [];
     const listKetinggian = options.ketinggian_combat || options.ketinggian || [];
@@ -133,12 +138,35 @@ export default function DashboardCombat({
     const selectedKetinggian = filters.ketinggian_combat || filters.ketinggian || [];
     const isFiltered = selectedStatus.length > 0 || selectedType.length > 0 || selectedKetinggian.length > 0;
 
-    // 👉 Menggunakan prefix aman /combat-api untuk Vercel
+    // Polling posisi live dengan merge data aman (mencegah tanggal hilang)
     const fetchLivePositions = useCallback(async () => {
         try {
             const res = await axios.get('/combat-api/live-positions');
             if (res.data?.combats && Array.isArray(res.data.combats)) {
-                setLiveCombats(res.data.combats);
+                setLiveCombats(prev => {
+                    if (!prev || prev.length === 0) return res.data.combats;
+                    const incomingMap = new Map(res.data.combats.map(item => [item.id, item]));
+                    return prev.map(oldItem => {
+                        const newItem = incomingMap.get(oldItem.id);
+                        if (!newItem) return oldItem;
+                        return {
+                            ...oldItem,
+                            ...newItem,
+                            tanggal_ambil: (newItem.tanggal_ambil && newItem.tanggal_ambil !== '-') 
+                                ? newItem.tanggal_ambil 
+                                : (oldItem.tanggal_ambil || '-'),
+                            tanggal_kembali: (newItem.tanggal_kembali && newItem.tanggal_kembali !== '-') 
+                                ? newItem.tanggal_kembali 
+                                : (oldItem.tanggal_kembali || '-'),
+                            nama_site: (newItem.nama_site && newItem.nama_site !== '-') 
+                                ? newItem.nama_site 
+                                : (oldItem.nama_site || '-'),
+                            pic_data: (newItem.pic_data && newItem.pic_data !== '-') 
+                                ? newItem.pic_data 
+                                : (oldItem.pic_data || '-'),
+                        };
+                    });
+                });
             }
             if (res.data?.active_trip !== undefined) {
                 setActiveTrip(res.data.active_trip);
@@ -148,7 +176,7 @@ export default function DashboardCombat({
         }
     }, []);
 
-    // Polling pintar anti-bottleneck
+    // Polling berkala setiap 10 detik
     useEffect(() => {
         let isMounted = true;
         let timeoutId = null;

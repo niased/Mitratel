@@ -36,7 +36,7 @@
     --input: oklch(0.922 0 0);
     --ring: oklch(0.708 0 0);
     
-    /* 2. FIX BORDER RADIUS: Turunkan nilainya jika terasa terlalu melengkung (misal: 0.25rem atau 0rem) */
+    /* 2. FIX BORDER RADIUS */
     --radius: 0.375rem; 
 
     /* Variabel Tambahan Chart & Sidebar */
@@ -189,4 +189,33 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(239, 68, 68, 0.5);
+}
+
+/* =========================================================================
+ * SMOOTH MOVING LEAFLET MARKER & ROTASI TRUK COMBAT
+ * ========================================================================= */
+
+/* Menganimasikan pergeseran posisi marker meluncur mulus 3.8 detik */
+.leaflet-marker-pane .smooth-moving-marker {
+  transition: transform 3.8s linear !important;
+}
+
+/* Transisi rotasi moncong truk saat berbelok */
+.combat-truck-rotator {
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: center center;
+  will-change: transform;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Gelombang radar sinyal GPS aktif */
+@keyframes radarPing {
+  0% { transform: scale(0.8); opacity: 0.8; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+.radar-signal-wave {
+  animation: radarPing 2s cubic-bezier(0, 0, 0.2, 1) infinite;
 }

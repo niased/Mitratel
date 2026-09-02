@@ -8,9 +8,12 @@ import defaultLogo from '../../images/dsmitel.png';
 export function ApplicationLogo({ 
     className, 
     imageClassName,
+    textClassName,
+    subtextClassName,
     imageSrc = defaultLogo, 
     showText = true,
     showTextOnMobile = false, 
+    forceWhite = false,
     ...props 
 }) {
     return (
@@ -20,7 +23,7 @@ export function ApplicationLogo({
                 <img 
                     src={imageSrc} 
                     alt="Logo DS Mitel" 
-                    className={cn('h-10 sm:h-13 w-auto object-contain shrink-0', imageClassName)}
+                    className={cn('h-9 sm:h-10 w-auto object-contain shrink-0', imageClassName)}
                 />
             ) : (
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-red-600 to-red-500 flex items-center justify-center text-white shrink-0 shadow-sm">
@@ -28,13 +31,25 @@ export function ApplicationLogo({
                 </div>
             )}
 
-            {/* 2. BRAND TEXT (ADAPTIF LIGHT & DARK MODE) */}
+            {/* 2. BRAND TEXT */}
             {showText && (
                 <div className={showTextOnMobile ? "flex flex-col" : "hidden sm:flex flex-col"}>
-                    <span className="font-extrabold text-base tracking-wide text-slate-900 dark:text-white block leading-none">
+                    <span 
+                        className={cn(
+                            'font-extrabold text-base tracking-wide block leading-none',
+                            forceWhite ? 'text-white drop-shadow-md' : 'text-slate-900 dark:text-white',
+                            textClassName
+                        )}
+                    >
                         DS Mitel
                     </span>
-                    <span className="text-[9px] sm:text-[10px] text-red-600 dark:text-red-400 font-bold tracking-[0.18em] uppercase mt-1 block leading-tight">
+                    <span 
+                        className={cn(
+                            'text-[9px] sm:text-[10px] font-bold tracking-[0.18em] uppercase mt-1 block leading-tight',
+                            forceWhite ? 'text-red-500' : 'text-red-600 dark:text-red-400',
+                            subtextClassName
+                        )}
+                    >
                         Dashboard Management
                     </span>
                 </div>
@@ -43,6 +58,5 @@ export function ApplicationLogo({
     );
 }
 
-// Alias Export agar kompatibel dengan import AppLogo maupun ApplicationLogo
 export const AppLogo = ApplicationLogo;
 export default ApplicationLogo;

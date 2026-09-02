@@ -48,20 +48,18 @@ class CombatTripController extends Controller
         }
 
         $trip = DB::transaction(function () use ($request, $combatId, $destinationName, $originName) {
-            $newTrip = CombatTrip::create([
-                'combat_master_id'   => $combatId,
-                'pic_user_id'        => $request->user()?->id,
-                'pic_name'           => $request->pic_name,
-                'pic_phone'          => $request->input('pic_phone') ?? '-',
-                'origin_name'        => $originName,
-                'destination_name'   => $destinationName,
-                'destination_lat'    => $request->destination_lat,
-                'destination_lng'    => $request->destination_lng,
-                'ip_gps'             => $request->input('jenis_rute') ?? $request->ip_gps ?? 'DEPLOY',
-                'status'             => 'ASSIGNED',
+            return CombatTrip::create([
+                'combat_master_id' => $combatId,
+                'pic_user_id'      => $request->user()?->id,
+                'pic_name'         => $request->pic_name,
+                'pic_phone'        => $request->input('pic_phone') ?? '-',
+                'origin_name'      => $originName,
+                'destination_name' => $destinationName,
+                'destination_lat'  => $request->destination_lat,
+                'destination_lng'  => $request->destination_lng,
+                'ip_gps'           => $request->input('jenis_rute') ?? $request->ip_gps ?? 'DEPLOY',
+                'status'           => 'ASSIGNED',
             ]);
-
-            return $newTrip;
         });
 
         $trackingUrl = url('/track/' . $trip->tracking_token);
@@ -92,8 +90,8 @@ class CombatTripController extends Controller
         return response()->json(['data' => $activeTrip]);
     }
 
-    /**
-     * 3. DASHBOARD: Endpoint Ringan untuk Polling Posisi Live di Peta
+   /**
+     * 3. DASHBOARD: Endpoint Polling Posisi Live & Seluruh Unit di Peta
      */
     public function getLivePositions()
     {
@@ -102,25 +100,42 @@ class CombatTripController extends Controller
             ->latest('id')
             ->first();
 
-        if (!$activeTrip) {
-            return response()->json([
-                'active_trip' => null,
-                'combats'     => null,
-            ]);
-        }
-
-        if ($activeTrip->combat && $activeTrip->combat->long_lat && str_contains($activeTrip->combat->long_lat, ';')) {
-            $coords = explode(';', $activeTrip->combat->long_lat);
-            $activeTrip->combat->latitude = (float) trim($coords[0]);
-            $activeTrip->combat->longitude = (float) trim($coords[1]);
-        }
+        $combats = CombatMaster::all()->map(function ($item) {
+            $lat = $item->latitude ?? null;
+            $lng = $item->longitude ?? null;
+            if ((!$lat || !$lng) && $item->long_lat && str_contains($item->long_lat, ';')) {
+                $parts = explode(';', $item->long_lat);
+                $lat = (float) trim($parts[0]);
+                $lng = (float) trim($parts[1]);
+            }
+            return [
+                'id'                => $item->id,
+                'asset_name'        => $item->asset_name,
+                'sn'                => $item->sn ?? '-',
+                'type_combat'       => $item->type_combat ?? '-',
+                'ketinggian_combat' => $item->ketinggian_combat ?? '-',
+                'status_combat'     => $item->status_combat,
+                'status_raw'        => $item->status_combat,
+                'nama_site'         => $item->nama_site ?? '-',
+                'lokasi_saat_ini'   => $item->lokasi_saat_ini ?? '-',
+                'latitude'          => $lat ? (float) $lat : null,
+                'longitude'         => $lng ? (float) $lng : null,
+                'long_lat'          => $item->long_lat,
+                'pic_data'          => $item->pic_data ?? $item->pic ?? '-',
+                'tanggal_ambil'     => $item->tanggal_ambil ?? '-',
+                'tanggal_kembali'   => $item->tanggal_kembali ?? '-',
+                'remark'            => $item->remark ?? '-',
+                'created_at'        => $item->created_at,
+                'updated_at'        => $item->updated_at,
+            ];
+        });
 
         return response()->json([
             'active_trip'  => $activeTrip,
-            'latest_coord' => $activeTrip->latestCoordinate,
+            'combats'      => $combats,
+            'latest_coord' => $activeTrip?->latestCoordinate,
         ]);
     }
-
     /**
      * 4. ADMIN: Membatalkan Penugasan Trip
      */
@@ -182,13 +197,11 @@ class CombatTripController extends Controller
         }
 
         $trips = $query->paginate($perPage);
-
         return response()->json($trips);
     }
 
     /**
-     * 6. PETA & RIWAYAT: Mengambil Seluruh Titik Koordinat Rute (Breadcrumb Trail)
-     * Dilengkapi Filter Titik Liar / Anti-Jitter GPS
+     * 6. PETA & RIWAYAT: Mengambil Titik Koordinat Rute
      */
     public function getTripRoute($id)
     {
@@ -196,17 +209,10 @@ class CombatTripController extends Controller
             $q->orderBy('recorded_at', 'asc')->orderBy('id', 'asc');
         }])->findOrFail($id);
 
-        // Filter Koordinat: Ambil yang akurasinya baik (<= 50 meter) atau jika null tetap disertakan
         $geoJsonCoords = $trip->coordinates
-            ->filter(function ($c) {
-                return $c->accuracy === null || (float) $c->accuracy <= 50;
-            })
-            ->map(function ($c) {
-                return [
-                    (float) $c->longitude, 
-                    (float) $c->latitude,  
-                ];
-            })->values();
+            ->filter(fn($c) => $c->accuracy === null || (float) $c->accuracy <= 50)
+            ->map(fn($c) => [(float) $c->longitude, (float) $c->latitude])
+            ->values();
 
         return response()->json([
             'data' => [
@@ -256,29 +262,20 @@ class CombatTripController extends Controller
     public function destroyTrip($id)
     {
         $trip = CombatTrip::findOrFail($id);
-
         if (in_array($trip->status, ['ASSIGNED', 'IN_TRANSIT']) && $trip->combat) {
             $trip->combat->update(['status_combat' => 'READY TO USE']);
         }
-
         $trip->delete();
 
         return response()->json(['message' => 'Riwayat perjalanan berhasil dihapus.']);
     }
 
     /**
-     * =========================================================================
-     * FUNGSI KHUSUS TRACKING DRIVER DENGAN PROTEKSI DEVICE LOCK
-     * =========================================================================
-     */
-
-    /**
-     * 9. DRIVER: Memulai perjalanan (MENGUNCI PERANGKAT DRIVER)
+     * 9. DRIVER: Memulai perjalanan (Lock Device)
      */
     public function startTrip(Request $request, $token)
     {
         $trip = CombatTrip::where('tracking_token', $token)->firstOrFail();
-
         if ($trip->status !== 'ASSIGNED') {
             return response()->json(['message' => 'Trip ini sudah dimulai atau selesai.'], 400);
         }
@@ -309,7 +306,7 @@ class CombatTripController extends Controller
     }
 
     /**
-     * 10. DRIVER: Menerima Ping Koordinat GPS Berkala & Siaran Live via Pusher
+     * 10. DRIVER: Menerima Ping GPS Berkala
      */
     public function ping(Request $request, $token)
     {
@@ -322,10 +319,9 @@ class CombatTripController extends Controller
         ]);
 
         $trip = CombatTrip::where('tracking_token', $token)
-                          ->where('status', 'IN_TRANSIT')
-                          ->firstOrFail();
+            ->where('status', 'IN_TRANSIT')
+            ->firstOrFail();
 
-        // Tolak jika perangkat berbeda mencoba mengirim ping GPS
         if (!empty($trip->device_token) && $request->filled('device_token')) {
             if ($trip->device_token !== $request->input('device_token')) {
                 return response()->json([
@@ -341,40 +337,36 @@ class CombatTripController extends Controller
         $acc   = $request->accuracy ? (float) $request->accuracy : null;
 
         DB::transaction(function () use ($lat, $lng, $speed, $acc, $trip) {
-            // Update titik terkini di Master Unit
             if ($trip->combat) {
                 $trip->combat->update([
                     'long_lat' => $lat . ';' . $lng,
                 ]);
             }
 
-            // Simpan jejak histori koordinat
             $trip->coordinates()->create([
-                'latitude'  => $lat,
-                'longitude' => $lng,
-                'speed'     => $speed,
-                'accuracy'  => $acc,
+                'latitude'    => $lat,
+                'longitude'   => $lng,
+                'speed'       => $speed,
+                'accuracy'    => $acc,
+                'recorded_at' => now(),
             ]);
         });
 
-        // Broadcast Real-Time ke Pusher
         try {
             broadcast(new CombatDriverLocationUpdated($trip, $lat, $lng, $speed, $acc));
-        } catch (\Throwable $e) {
-            // Lanjutkan jika ada kendala jaringan Pusher
-        }
+        } catch (\Throwable $e) {}
 
         return response()->json(['message' => 'Ping GPS diterima dan disiarkan live.']);
     }
 
     /**
-     * 11. DRIVER: Menyelesaikan perjalanan tiba di lokasi
+     * 11. DRIVER: Menyelesaikan Perjalanan
      */
     public function completeTrip(Request $request, $token)
     {
         $trip = CombatTrip::where('tracking_token', $token)
-                          ->where('status', 'IN_TRANSIT')
-                          ->firstOrFail();
+            ->where('status', 'IN_TRANSIT')
+            ->firstOrFail();
 
         if (!empty($trip->device_token) && $request->filled('device_token')) {
             if ($trip->device_token !== $request->input('device_token')) {
@@ -419,7 +411,7 @@ class CombatTripController extends Controller
     }
 
     /**
-     * 12. MODE PANTAU (OBSERVER): Mengambil posisi live supir dari database secara berkala
+     * 12. MODE PANTAU (OBSERVER): Mengambil Status Terkini
      */
     public function getDriverLiveStatus($token)
     {
@@ -436,7 +428,7 @@ class CombatTripController extends Controller
                 'longitude'   => (float) $latestCoord->longitude,
                 'speed'       => (string) ($latestCoord->speed ? round($latestCoord->speed, 1) : '0.0'),
                 'accuracy'    => (int) ($latestCoord->accuracy ?? 0),
-                'recorded_at' => $latestCoord->created_at ? $latestCoord->created_at->format('H:i:s') : null,
+                'recorded_at' => $latestCoord->recorded_at ? $latestCoord->recorded_at->format('H:i:s') : now()->format('H:i:s'),
             ];
         } elseif ($trip->combat && $trip->combat->long_lat && str_contains($trip->combat->long_lat, ';')) {
             $parts = explode(';', $trip->combat->long_lat);
@@ -460,14 +452,11 @@ class CombatTripController extends Controller
     }
 
     /**
-     * 13. EXPORT EXCEL: Mengunduh Riwayat Perjalanan ke File CSV/Excel
+     * 13. EXPORT EXCEL RIWAYAT
      */
     public function exportTripsHistory(Request $request)
     {
-        $trips = CombatTrip::with(['combat', 'picUser'])
-            ->latest('id')
-            ->get();
-
+        $trips = CombatTrip::with(['combat', 'picUser'])->latest('id')->get();
         $filename = "Riwayat_Mobilisasi_COMBAT_" . date('Y-m-d_His') . ".csv";
 
         $headers = [
@@ -484,10 +473,10 @@ class CombatTripController extends Controller
             'Status', 'Waktu Mulai', 'Waktu Selesai'
         ];
 
-        $callback = function () use ($trips, $columns) {
+        return response()->stream(function () use ($trips, $columns) {
             $file = fopen('php://output', 'w');
             fputs($file, "\xEF\xBB\xBF");
-            fputcsv($file, $columns);
+            fputcsv($file, $columns, ';');
 
             foreach ($trips as $t) {
                 fputcsv($file, [
@@ -502,20 +491,18 @@ class CombatTripController extends Controller
                     $t->status ?? 'COMPLETED',
                     $t->started_at ? $t->started_at->format('Y-m-d H:i:s') : '-',
                     $t->ended_at ? $t->ended_at->format('Y-m-d H:i:s') : '-',
-                ]);
+                ], ';');
             }
             fclose($file);
-        };
-
-        return response()->stream($callback, 200, $headers);
+        }, 200, $headers);
     }
 
     /**
-     * 14. RESET BULANAN OTOMATIS: Membersihkan seluruh riwayat COMBAT yang sudah selesai
+     * 14. RESET RIWAYAT BULANAN
      */
     public function resetMonthlyTripsHistory(Request $request)
     {
-        $finishedTrips = CombatTrip::whereIn('status', ['COMPLETED', 'CANCELLED', 'ONSITE'])->get();
+        $finishedTrips = CombatTrip::whereIn('status', ['COMPLETED', 'CANCELLED'])->get();
         $count = $finishedTrips->count();
 
         if ($count === 0) {
@@ -534,7 +521,7 @@ class CombatTripController extends Controller
 
         return response()->json([
             'status'  => 'success',
-            'message' => "Reset bulanan berhasil! {$count} data riwayat COMBAT yang selesai telah dibersihkan dari database."
+            'message' => "Reset bulanan berhasil! {$count} data riwayat selesai telah dibersihkan."
         ]);
     }
 }

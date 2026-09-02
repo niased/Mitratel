@@ -19,20 +19,40 @@ import {
     ChevronRight 
 } from 'lucide-react';
 
-// HELPER: Parse tanggal format Indonesia (DD/MM/YYYY, YYYY-MM-DD, dsb)
+// HELPER: Parse tanggal format Indonesia (Mendukung DD/MM/YYYY, DD-Mon, YYYY-MM-DD)
 const parseIndonesianDate = (dateStr) => {
-    if (!dateStr || dateStr === '-' || dateStr === 'N/A' || dateStr === 'Belum Kembali' || dateStr === 'null') return null;
+    if (!dateStr || dateStr === '-' || dateStr === 'N/A' || dateStr === 'Belum Kembali' || dateStr === 'null' || dateStr === '?') {
+        return null;
+    }
     if (dateStr instanceof Date) return dateStr;
-
-    const str = String(dateStr).trim();
     
-    // Cek format DD/MM/YYYY atau DD-MM-YYYY
-    const ddmmyyyy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    // Bersihkan karakter escaped slash seperti "21\/12\/2024"
+    let str = String(dateStr).trim().replace(/\\/g, '');
+
+    // 1. Format DD/MM/YYYY atau DD-MM-YYYY
+    const ddmmyyyy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
     if (ddmmyyyy) {
-        return new Date(parseInt(ddmmyyyy[3], 10), parseInt(ddmmyyyy[2], 10) - 1, parseInt(ddmmyyyy[1], 10));
+        let year = parseInt(ddmmyyyy[3], 10);
+        if (year < 100) year += 2000;
+        return new Date(year, parseInt(ddmmyyyy[2], 10) - 1, parseInt(ddmmyyyy[1], 10));
     }
 
-    // Cek format YYYY-MM-DD
+    // 2. Format DD-Mon atau DD-Mon-YYYY (contoh: 13-Jul, 25-Jan-26)
+    const monthMap = {
+        jan: 0, feb: 1, mar: 2, apr: 3, mei: 4, may: 4, jun: 5,
+        jul: 6, agu: 7, aug: 7, sep: 8, okt: 9, oct: 9, nov: 10, des: 11, dec: 11
+    };
+    const ddMon = str.match(/^(\d{1,2})[\s\/\-]([a-zA-Z]{3,})([\s\/\-](\d{2,4}))?/);
+    if (ddMon) {
+        const day = parseInt(ddMon[1], 10);
+        const monStr = ddMon[2].toLowerCase().slice(0, 3);
+        const month = monthMap[monStr] ?? 0;
+        let year = ddMon[4] ? parseInt(ddMon[4], 10) : new Date().getFullYear();
+        if (year < 100) year += 2000;
+        return new Date(year, month, day);
+    }
+
+    // 3. Format YYYY-MM-DD
     const yyyymmdd = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
     if (yyyymmdd) {
         return new Date(parseInt(yyyymmdd[1], 10), parseInt(yyyymmdd[2], 10) - 1, parseInt(yyyymmdd[3], 10));
@@ -113,7 +133,6 @@ export default function TabelCombat({ tableData = [] }) {
         rawData.forEach((item) => {
             const status = getStatus(item);
             const height = getHeight(item);
-
             if (!rowGroup[status]) rowGroup[status] = { status, counts: {}, rowTotal: 0 };
             rowGroup[status].counts[height] = (rowGroup[status].counts[height] || 0) + 1;
             rowGroup[status].rowTotal += 1;
@@ -133,16 +152,22 @@ export default function TabelCombat({ tableData = [] }) {
         return { cols, rows, grandTotals, totalAll: rawData.length };
     }, [rawData]);
 
-    // 2. TABEL INSIGHT DURASI REAL-TIME (DURASI WAKTU TERAKHIR -> WAKTU SEKARANG)
+    // 2. TABEL INSIGHT DURASI
     const allUsageInsight = useMemo(() => {
         if (!rawData.length) return [];
-
         const now = new Date();
 
         const calculated = rawData.map((item) => {
             const tglAmbilRaw = item.tanggal_ambil || getValueByPattern(item, [/tanggal[\s_]*ambil/i, /tgl[\s_]*ambil/i, /tanggal[\s_]*deploy/i]);
             const tglKembaliRaw = item.tanggal_kembali || getValueByPattern(item, [/tanggal[\s_]*kembali/i, /tgl[\s_]*kembali/i]);
-            const siteName = item.nama_site || item.asset_name || getValueByPattern(item, [/nama[\s_]*site/i, /asset[\s_]*name/i]) || 'Unit COMBAT';
+
+            // Fallback nama site agar tidak muncul tanda "-" saja
+            const rawSite = (item.nama_site || getValueByPattern(item, [/nama[\s_]*site/i]) || '').trim();
+            const rawAsset = (item.asset_name || getValueByPattern(item, [/asset[\s_]*name/i]) || '').trim();
+            const siteName = (rawSite && rawSite !== '-' && rawSite !== '?') 
+                ? rawSite 
+                : (rawAsset && rawAsset !== '-' ? rawAsset : 'Unit COMBAT');
+
             const type = item.type_combat || getValueByPattern(item, [/type[\s_]*combat/i, /tipe[\s_]*combat/i]) || '-';
             const status = getStatus(item);
 
@@ -161,22 +186,18 @@ export default function TabelCombat({ tableData = [] }) {
                 locationCategory = 'On-Site';
             }
 
-            // 👉 LOGIKA PERHITUNGAN: DARI WAKTU TERAKHIR KE WAKTU SEKARANG
-            // Jika ada tanggal_kembali -> waktu terakhirnya adalah tanggal_kembali (mengendap di gudang)
-            // Jika belum kembali -> waktu terakhirnya adalah tanggal_ambil (mengendap di site)
-            let lastEventDate = null;
+            // Hitung Hari Mengendap
+            let targetDate = null;
             if (endDate) {
-                lastEventDate = endDate;
+                targetDate = endDate;
             } else if (startDate) {
-                lastEventDate = startDate;
+                targetDate = startDate;
             }
 
-            let days = 0;
-            if (lastEventDate) {
-                const diffTime = now.getTime() - lastEventDate.getTime();
-                if (diffTime > 0) {
-                    days = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                }
+            let days = null;
+            if (targetDate) {
+                const diffTime = now.getTime() - targetDate.getTime();
+                days = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
             }
 
             return {
@@ -184,16 +205,15 @@ export default function TabelCombat({ tableData = [] }) {
                 siteName,
                 type,
                 sn: item.sn || item.serial_number || item.sn_combat || '-',
-                tglAmbil: hasAmbil ? tglAmbilRaw : '-',
-                tglKembali: hasKembali ? tglKembaliRaw : '-',
+                tglAmbil: hasAmbil ? String(tglAmbilRaw).replace(/\\/g, '') : '-',
+                tglKembali: hasKembali ? String(tglKembaliRaw).replace(/\\/g, '') : '-',
                 status,
                 locationCategory,
                 durationDays: days,
             };
         });
 
-        // Urutkan dari durasi mengendap terlama ke tersingkat
-        return calculated.sort((a, b) => b.durationDays - a.durationDays);
+        return calculated.sort((a, b) => (b.durationDays ?? -1) - (a.durationDays ?? -1));
     }, [rawData]);
 
     const uniqueTypes = useMemo(() => {
@@ -220,7 +240,6 @@ export default function TabelCombat({ tableData = [] }) {
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 w-full">
-            
             {/* TABEL STATUS BERDASARKAN KETINGGIAN */}
             <Card className="bg-white/80 dark:bg-slate-900/50 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-xl shadow-sm flex flex-col overflow-hidden">
                 <CardHeader className="pb-3 pt-4 px-4 border-b border-slate-100 dark:border-slate-800/50 bg-slate-50/50 dark:bg-slate-900/50">
@@ -296,7 +315,6 @@ export default function TabelCombat({ tableData = [] }) {
             {/* TABEL INSIGHT DURASI DEPLOYMENT */}
             <Card className="bg-white/80 dark:bg-slate-900/50 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-xl shadow-sm flex flex-col overflow-hidden">
                 <CardHeader className="pb-3 pt-3 px-4 border-b border-slate-100 dark:border-slate-800/50 bg-slate-50/50 dark:bg-slate-900/50 flex flex-row items-center justify-between gap-2 flex-wrap">
-                    
                     <div className="flex items-center gap-2">
                         <Clock className="w-4 h-4 text-amber-500 shrink-0" />
                         <CardTitle className="text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-200">
@@ -318,7 +336,6 @@ export default function TabelCombat({ tableData = [] }) {
                                 className="pl-8 pr-2 py-1 text-xs bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-md text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500/50 h-8 w-28 sm:w-36"
                             />
                         </div>
-
                         <Select 
                             value={selectedTypeFilter} 
                             onValueChange={(val) => {
@@ -339,7 +356,6 @@ export default function TabelCombat({ tableData = [] }) {
                         </Select>
                     </div>
                 </CardHeader>
-
                 <CardContent className="p-0 flex-1 flex flex-col justify-between">
                     <Table className="w-full text-xs border-collapse">
                         <TableHeader className="bg-slate-100/90 dark:bg-slate-950/90">
@@ -400,7 +416,7 @@ export default function TabelCombat({ tableData = [] }) {
                                             </div>
                                         </TableCell>
                                         <TableCell className="py-2 px-2 text-center">
-                                            {row.durationDays > 0 ? (
+                                            {row.durationDays !== null && row.durationDays !== undefined ? (
                                                 <span className={`inline-flex items-center gap-1 font-bold text-[11px] px-2 py-0.5 rounded-full ${
                                                     row.durationDays > 90 
                                                         ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20' 
@@ -445,7 +461,6 @@ export default function TabelCombat({ tableData = [] }) {
                     </div>
                 </CardContent>
             </Card>
-
         </div>
     );
 }
