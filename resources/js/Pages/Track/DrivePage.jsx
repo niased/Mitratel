@@ -297,7 +297,7 @@ export default function DrivePage({ trip }) {
                                     className="w-full py-3 h-auto bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-blue-600/25 active:scale-98 transition-all cursor-pointer flex items-center justify-center gap-2"
                                 >
                                     <ExternalLink className="w-4 h-4" />
-                                    <span>Buka Navigasi di Google Maps</span>
+                                    <span>Buka Navigasi di Google Map</span>
                                 </Button>
                             </CardContent>
                         </Card>
