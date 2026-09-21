@@ -14,7 +14,8 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import useTabTarikanSmartkeyControl from './TabTarikanSmartkeyControl';
 
-export default function TabTarikanSmartkey({ canWrite }) {
+export default function TabTarikanSmartkey({ canWrite, control }) {
+    const internalControl = useTabTarikanSmartkeyControl(canWrite);
     const {
         fileSmartkey,
         setFileSmartkey,
@@ -26,10 +27,11 @@ export default function TabTarikanSmartkey({ canWrite }) {
         skStats,
         skError,
         skSteps,
+        previewData = [],
         fileSmartkeyInputRef,
         handleProcessSmartkey,
         clearFile,
-    } = useTabTarikanSmartkeyControl(canWrite);
+    } = control || internalControl;
 
     const formatFileSize = (bytes) => {
         if (!bytes) return '0 B';
@@ -45,7 +47,7 @@ export default function TabTarikanSmartkey({ canWrite }) {
             className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800/80 rounded-2xl shadow-xs overflow-hidden flex flex-col justify-between transition-all duration-300 hover:border-slate-300 dark:hover:border-slate-700/80"
         >
             <div>
-                {/* Header Modul (Tanpa Kotak Ikon) */}
+                {/* Header Modul */}
                 <div className="p-5 sm:p-6 border-b border-slate-200/80 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-950/40">
                     <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 tracking-tight">
                         Sinkronisasi IoT SmartKey
@@ -61,17 +63,15 @@ export default function TabTarikanSmartkey({ canWrite }) {
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
                             Berkas Lock History (.csv):
                         </label>
-
                         <input
                             ref={fileSmartkeyInputRef}
                             type="file"
                             accept=".csv,.txt"
-                            disabled={!canWrite || processingSmartkey}
+                            disabled={!canWrite || processingSmartkey || previewData.length > 0}
                             onChange={(e) => setFileSmartkey(e.target.files[0] || null)}
                             className="hidden"
                         />
-
-                        {!fileSmartkey ? (
+                        {!fileSmartkey && previewData.length === 0 ? (
                             <div
                                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                                 onDragLeave={() => setIsDragging(false)}
@@ -97,7 +97,7 @@ export default function TabTarikanSmartkey({ canWrite }) {
                                     Format CSV (Comma/Semicolon Delimited) dari portal gembok
                                 </p>
                             </div>
-                        ) : (
+                        ) : fileSmartkey ? (
                             <div className="flex items-center justify-between p-3.5 rounded-xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/25 animate-in fade-in">
                                 <div className="flex items-center gap-3 min-w-0 pr-2">
                                     <div className="p-2 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0">
@@ -108,11 +108,11 @@ export default function TabTarikanSmartkey({ canWrite }) {
                                             {fileSmartkey.name}
                                         </p>
                                         <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                                            {formatFileSize(fileSmartkey.size)} • Siap diproses
+                                            {formatFileSize(fileSmartkey.size)} — Siap diproses
                                         </p>
                                     </div>
                                 </div>
-                                {!processingSmartkey && (
+                                {!processingSmartkey && previewData.length === 0 && (
                                     <button
                                         type="button"
                                         onClick={clearFile}
@@ -123,7 +123,7 @@ export default function TabTarikanSmartkey({ canWrite }) {
                                     </button>
                                 )}
                             </div>
-                        )}
+                        ) : null}
                     </div>
 
                     {/* Progress Bar */}
@@ -155,29 +155,6 @@ export default function TabTarikanSmartkey({ canWrite }) {
                         </Alert>
                     )}
 
-                    {/* Summary KPI Result */}
-                    {skStats && !processingSmartkey && (
-                        <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 space-y-2.5 animate-in fade-in">
-                            <div className="flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-                                <div className="flex items-center gap-1.5">
-                                    <ShieldCheck className="w-4 h-4" />
-                                    <span>Hasil Sinkronisasi SmartKey</span>
-                                </div>
-                                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20">
-                                    Tersinkron
-                                </span>
-                            </div>
-                            <div className="p-3 rounded-lg bg-white/80 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-center">
-                                <span className="text-[11px] text-slate-400 uppercase font-medium block">
-                                    Total Unit Terverifikasi
-                                </span>
-                                <span className="font-bold text-emerald-600 dark:text-emerald-400 text-base font-mono mt-0.5 block">
-                                    {skStats.synced.toLocaleString('id-ID')} / {skStats.total.toLocaleString('id-ID')} Unit
-                                </span>
-                            </div>
-                        </div>
-                    )}
-
                     {/* Kotak Hitam Konsol: Pipeline Status */}
                     <div className="p-4 rounded-xl bg-slate-950 border border-slate-800/90 shadow-inner space-y-3 font-mono">
                         <div className="flex items-center justify-between text-[11px] text-slate-400 pb-2 border-b border-slate-900">
@@ -185,11 +162,10 @@ export default function TabTarikanSmartkey({ canWrite }) {
                                 <Terminal className="w-3.5 h-3.5 text-emerald-400" />
                                 <span>Status Pipeline Engine</span>
                             </span>
-                            <span className="text-[10px] text-slate-500">
-                                {processingSmartkey ? 'RUNNING' : 'STANDBY'}
+                            <span className="text-[10px] text-slate-500 font-bold">
+                                {processingSmartkey ? 'RUNNING' : previewData.length > 0 ? 'READY TO SAVE' : 'STANDBY'}
                             </span>
                         </div>
-
                         <div className="space-y-2 text-xs">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2.5">
@@ -210,7 +186,6 @@ export default function TabTarikanSmartkey({ canWrite }) {
                                     {skSteps.read === 'done' ? 'Selesai' : skSteps.read === 'processing' ? 'Membaca...' : 'Siap'}
                                 </span>
                             </div>
-
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2.5">
                                     {skSteps.matching === 'done' ? (
@@ -230,7 +205,6 @@ export default function TabTarikanSmartkey({ canWrite }) {
                                     {skSteps.matching === 'done' ? 'Selesai' : skSteps.matching === 'processing' ? 'Matching...' : 'Menunggu'}
                                 </span>
                             </div>
-
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2.5">
                                     {skSteps.sync === 'done' ? (
@@ -256,25 +230,27 @@ export default function TabTarikanSmartkey({ canWrite }) {
             </div>
 
             {/* Action Footer */}
-            <div className="p-4 sm:p-5 border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-950/40">
-                <button
-                    type="submit"
-                    disabled={!canWrite || !fileSmartkey || processingSmartkey}
-                    className="w-full h-10 flex items-center justify-center gap-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition-all disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
-                >
-                    {processingSmartkey ? (
-                        <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span>Memproses Batch Telemetry...</span>
-                        </>
-                    ) : (
-                        <>
-                            <Sparkles className="w-4 h-4" />
-                            <span>Jalankan Engine SmartKey</span>
-                        </>
-                    )}
-                </button>
-            </div>
+            {previewData.length === 0 && (
+                <div className="p-4 sm:p-5 border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-950/40">
+                    <button
+                        type="submit"
+                        disabled={!canWrite || !fileSmartkey || processingSmartkey}
+                        className="w-full h-10 flex items-center justify-center gap-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition-all disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                    >
+                        {processingSmartkey ? (
+                            <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Memproses Batch Telemetry...</span>
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles className="w-4 h-4" />
+                                <span>Jalankan Engine SmartKey</span>
+                            </>
+                        )}
+                    </button>
+                </div>
+            )}
         </form>
     );
 }

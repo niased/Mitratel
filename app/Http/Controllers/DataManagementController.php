@@ -53,7 +53,8 @@ class DataManagementController extends Controller
         $smartkeyQuery = SmartkeyMaster::query();
         if ($search) {
             $smartkeyQuery->where(function ($q) use ($search) {
-                $q->where('serial_number', 'like', "%{$search}%")
+                $q->where('lock_id', 'like', "%{$search}%")
+                  ->orWhere('serial_number', 'like', "%{$search}%")
                   ->orWhere('site_name', 'like', "%{$search}%")
                   ->orWhere('tower_id', 'like', "%{$search}%")
                   ->orWhere('infrako', 'like', "%{$search}%")
@@ -72,12 +73,9 @@ class DataManagementController extends Controller
     }
 
     // ==========================================
-    // STORE MULTIPLE RPM MASTER (SUPER TOLERAN)
+    // STORE MULTIPLE RPM MASTER
     // ==========================================
 
-    /**
-     * Menerima input tunggal maupun array dari multiple baris
-     */
     public function storeRpm(Request $request)
     {
         $items = $request->has('items') ? $request->input('items') : [$request->all()];
@@ -100,17 +98,14 @@ class DataManagementController extends Controller
             $tanggalSubmit  = $this->nullableString($item['tanggal_submit'] ?? $item['tanggalsubn'] ?? $item['tanggalsubmit'] ?? null);
             $tanggalApprove = $this->nullableString($item['tanggal_approve'] ?? $item['tanggalappr'] ?? $item['tanggalapprove'] ?? null);
 
-            // 👉 Cek apakah ada MINIMAL 1 data apapun yang terisi di baris ini
             $hasData = !is_null($rpmId) || !is_null($siteId) || !is_null($rtp) 
                     || !is_null($mitra) || !is_null($bulan) || !is_null($tahun) 
                     || !is_null($approve) || !is_null($tanggalSubmit) || !is_null($tanggalApprove);
 
-            // Jika baris benar-benar kosong melompong, lewati
             if (!$hasData) {
                 continue;
             }
 
-            // AUTO-FALLBACK: Jika site_id kosong, isi otomatis dari rpm_id / default
             if (is_null($siteId)) {
                 $siteId = $rpmId ?? 'SITE-UNKNOWN';
             }
@@ -167,7 +162,6 @@ class DataManagementController extends Controller
         try {
             $rpm = RpmMaster::findOrFail($id);
 
-            // Pastikan site_id tidak kosong
             if (empty($data['site_id'])) {
                 $data['site_id'] = $data['rpm_id'] ?? $rpm->site_id ?? 'SITE-UNKNOWN';
             }
@@ -221,12 +215,9 @@ class DataManagementController extends Controller
     }
 
     // ==========================================
-    // STORE MULTIPLE SMARTKEY MASTER (SUPER TOLERAN)
+    // STORE MULTIPLE SMARTKEY MASTER (LOCK ID & SN TERSENDIRI)
     // ==========================================
 
-    /**
-     * Menerima input tunggal maupun array dari multiple baris
-     */
     public function storeSmartkey(Request $request)
     {
         $items = $request->has('items') ? $request->input('items') : [$request->all()];
@@ -239,8 +230,8 @@ class DataManagementController extends Controller
         $now = now();
 
         foreach ($items as $item) {
-            $sn              = $this->nullableString($item['serial_number'] ?? $item['sn'] ?? $item['lock_id'] ?? null);
-            $newSn           = $this->nullableString($item['new_sn'] ?? null);
+            $lockId          = $this->nullableString($item['lock_id'] ?? $item['id_lock'] ?? null);
+            $sn              = $this->nullableString($item['serial_number'] ?? $item['sn'] ?? null);
             $towerId         = $this->nullableString($item['tower_id'] ?? null);
             $siteName        = $this->nullableString($item['site_name'] ?? null);
             $kotaKab         = $this->nullableString($item['kota_kab'] ?? $item['kota'] ?? $item['kabupaten'] ?? null);
@@ -252,25 +243,23 @@ class DataManagementController extends Controller
             $posisiUnit      = $this->nullableString($item['posisi_unit'] ?? null);
             $batch           = $this->nullableString($item['batch'] ?? null);
 
-            // 👉 Cek apakah ada MINIMAL 1 data apapun yang terisi di baris ini
-            $hasData = !is_null($sn) || !is_null($newSn) || !is_null($towerId) 
+            $hasData = !is_null($lockId) || !is_null($sn) || !is_null($towerId) 
                     || !is_null($siteName) || !is_null($kotaKab) || !is_null($longLat) 
                     || !is_null($infrako) || !is_null($status) || !is_null($statusAktifitas)
                     || !is_null($ksm) || !is_null($posisiUnit) || !is_null($batch);
 
-            // Jika baris benar-benar kosong melompong, lewati
             if (!$hasData) {
                 continue;
             }
 
-            // AUTO-FALLBACK: Jika serial_number kosong, isi otomatis dari new_sn / tower_id / default
-            if (is_null($sn)) {
-                $sn = $newSn ?? $towerId ?? 'SK-UNKNOWN';
-            }
+            // Fallback saling isi jika salah satu kosong
+            if (is_null($sn) && !is_null($lockId)) { $sn = $lockId; }
+            if (is_null($lockId) && !is_null($sn)) { $lockId = $sn; }
+            if (is_null($sn)) { $sn = 'SK-UNKNOWN'; $lockId = 'SK-UNKNOWN'; }
 
             $insertData[] = [
+                'lock_id'          => $lockId,
                 'serial_number'    => $sn,
-                'new_sn'           => $newSn,
                 'tower_id'         => $towerId,
                 'site_name'        => $siteName,
                 'kota_kab'         => $kotaKab,
@@ -307,8 +296,8 @@ class DataManagementController extends Controller
     public function updateSmartkey(Request $request, int|string $id)
     {
         $validated = $request->validate([
+            'lock_id'          => 'nullable|string|max:255',
             'serial_number'    => 'nullable|string|max:255',
-            'new_sn'           => 'nullable|string|max:255',
             'tower_id'         => 'nullable|string|max:255',
             'site_name'        => 'nullable|string|max:255',
             'kota_kab'         => 'nullable|string|max:255',
@@ -326,9 +315,11 @@ class DataManagementController extends Controller
         try {
             $smartkey = SmartkeyMaster::findOrFail($id);
 
-            // Pastikan serial_number tidak kosong
             if (empty($data['serial_number'])) {
-                $data['serial_number'] = $data['new_sn'] ?? $smartkey->serial_number ?? 'SK-UNKNOWN';
+                $data['serial_number'] = $smartkey->serial_number ?? $data['lock_id'] ?? 'SK-UNKNOWN';
+            }
+            if (empty($data['lock_id'])) {
+                $data['lock_id'] = $smartkey->lock_id ?? $data['serial_number'] ?? 'SK-UNKNOWN';
             }
 
             $smartkey->update($data);
@@ -380,11 +371,164 @@ class DataManagementController extends Controller
     }
 
     // ==========================================
-    // EXPORT & RESET DATA
+    // PROCESS BATCH SMARTKEY (OPTIMIZED INDEX QUERY)
+    // ==========================================
+
+    public function processSmartkeyBatch(Request $request)
+    {
+        ini_set('max_execution_time', 300);
+        set_time_limit(300);
+        ini_set('memory_limit', '512M');
+
+        $request->validate([
+            'rows'         => 'required|array',
+            'preview_only' => 'nullable|boolean',
+        ]);
+
+        $rows        = $request->input('rows', []);
+        $previewOnly = $request->boolean('preview_only', false);
+
+        if (empty($rows)) {
+            return response()->json(['rows' => [], 'total' => 0, 'synced' => 0, 'new_count' => 0]);
+        }
+
+        // Ekstraksi ID & Serial Number
+        $lockIds = array_values(array_filter(array_map(fn($r) => trim($r['lock_id'] ?? ''), $rows)));
+        $sns     = array_values(array_filter(array_map(fn($r) => trim($r['serial_number'] ?? ''), $rows)));
+
+        // PISAHKAN QUERY: Memaksa MySQL memakai Index secara cepat tanpa klausa 'OR'
+        $masterByLockId = [];
+        $masterBySn     = [];
+
+        if (!empty($lockIds)) {
+            $byLock = DB::table('smartkey_masters')
+                ->select(['id', 'lock_id', 'serial_number', 'tower_id', 'site_name', 'status_aktifitas', 'long_lat'])
+                ->whereIn('lock_id', $lockIds)
+                ->get();
+            foreach ($byLock as $m) {
+                if ($m->lock_id) { $masterByLockId[trim($m->lock_id)] = $m; }
+            }
+        }
+
+        if (!empty($sns)) {
+            $bySn = DB::table('smartkey_masters')
+                ->select(['id', 'lock_id', 'serial_number', 'tower_id', 'site_name', 'status_aktifitas', 'long_lat'])
+                ->whereIn('serial_number', $sns)
+                ->get();
+            foreach ($bySn as $m) {
+                if ($m->serial_number) { $masterBySn[trim($m->serial_number)] = $m; }
+            }
+        }
+
+        $processedRows = [];
+        $upsertData    = [];
+        $seenUpsert    = [];
+        $syncedCount   = 0;
+        $newCount      = 0;
+        $now           = now();
+
+        foreach ($rows as $row) {
+            $lockId = trim($row['lock_id'] ?? '');
+            $sn     = trim($row['serial_number'] ?? '');
+
+            if (!$lockId && !$sn) {
+                continue;
+            }
+
+            $effLockId = substr($lockId ?: $sn, 0, 100);
+            $effSn     = substr($sn ?: $lockId, 0, 100);
+
+            // Matching XLOOKUP di memori
+            $existing = $masterByLockId[$effLockId] ?? $masterBySn[$effSn] ?? null;
+
+            if ($existing) {
+                $syncedCount++;
+            } else {
+                $newCount++;
+            }
+
+            $towerId         = substr($row['tower_id'] ?? ($existing->tower_id ?? ''), 0, 100);
+            $siteName        = substr($row['site_name'] ?? ($existing->site_name ?? ''), 0, 255);
+            $statusAktifitas = substr($row['status_aktifitas'] ?? ($existing->status_aktifitas ?? 'LOCKED'), 0, 100);
+            $longLat         = substr($row['long_lat'] ?? ($existing->long_lat ?? ''), 0, 255);
+
+            $processedRows[] = [
+                'lock_id'          => $effLockId,
+                'serial_number'    => $effSn,
+                'tower_id'         => $towerId,
+                'site_name'        => $siteName,
+                'status_aktifitas' => $statusAktifitas,
+                'long_lat'         => $longLat,
+                'status_xlookup'   => $existing ? 'UPDATE' : '#N/A',
+                'keterangan'       => $existing ? 'Update Telemetri' : '#N/A (Data Baru)',
+            ];
+
+            // Cegah duplikasi key lock_id dalam 1 batch upsert
+            if (!isset($seenUpsert[$effLockId])) {
+                $seenUpsert[$effLockId] = true;
+                $upsertData[] = [
+                    'lock_id'          => $effLockId,
+                    'serial_number'    => $effSn,
+                    'tower_id'         => $towerId ?: null,
+                    'site_name'        => $siteName ?: null,
+                    'status_aktifitas' => $statusAktifitas ?: 'LOCKED',
+                    'status'           => 'AKTIF',
+                    'long_lat'         => $longLat ?: null,
+                    'created_at'       => $now,
+                    'updated_at'       => $now,
+                ];
+            }
+        }
+
+        // 1. Mode Pratinjau
+        if ($previewOnly) {
+            return response()->json([
+                'rows'      => $processedRows,
+                'total'     => count($processedRows),
+                'synced'    => $syncedCount,
+                'new_count' => $newCount,
+            ]);
+        }
+
+        // 2. Mode Simpan ke Database
+        try {
+            DB::beginTransaction();
+
+            foreach (array_chunk($upsertData, 100) as $chunk) {
+                DB::table('smartkey_masters')->upsert(
+                    $chunk,
+                    ['lock_id'],
+                    ['serial_number', 'tower_id', 'site_name', 'status_aktifitas', 'status', 'long_lat', 'updated_at']
+                );
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'synced'  => count($upsertData),
+                'message' => 'Data Smart Key berhasil disimpan ke database.'
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error("Process Smartkey Batch Error: " . $e->getMessage());
+
+            return response()->json([
+                'message' => 'Gagal menyimpan ke database: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // ==========================================
+    // EXPORT DATA RPM (OPTIMIZED FOR LARGE DATA)
     // ==========================================
 
     public function exportRpm(): StreamedResponse
     {
+        if (class_exists('\Barryvdh\Debugbar\Facades\Debugbar')) {
+            \Barryvdh\Debugbar\Facades\Debugbar::disable();
+        }
+
         $fileName = 'export_master_rpm_' . date('Ymd_His') . '.csv';
         $headers  = [
             "Content-type"        => "text/csv; charset=UTF-8",
@@ -395,25 +539,56 @@ class DataManagementController extends Controller
         ];
 
         return response()->stream(function () {
+            set_time_limit(0);
+            ini_set('memory_limit', '512M');
+
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+
             $file = fopen('php://output', 'w');
             fputs($file, "\xEF\xBB\xBF");
+
             fputcsv($file, ['RPM ID', 'Site ID', 'RTP', 'Mitra', 'Bulan', 'Tahun', 'Approve', 'Tanggal Submit', 'Tanggal Approve'], ';');
 
-            RpmMaster::chunk(500, function ($rows) use ($file) {
-                foreach ($rows as $item) {
-                    fputcsv($file, [
-                        $item->rpm_id, $item->site_id, $item->rtp, $item->mitra, $item->bulan,
-                        $item->tahun, $item->approve, $item->tanggal_submit, $item->tanggal_approve,
-                    ], ';');
+            $query = DB::table('rpm_masters')
+                ->select(['rpm_id', 'site_id', 'rtp', 'mitra', 'bulan', 'tahun', 'approve', 'tanggal_submit', 'tanggal_approve'])
+                ->orderBy('id', 'asc');
+
+            $counter = 0;
+            foreach ($query->cursor() as $item) {
+                fputcsv($file, [
+                    $item->rpm_id,
+                    $item->site_id,
+                    $item->rtp,
+                    $item->mitra,
+                    $item->bulan,
+                    $item->tahun,
+                    $item->approve,
+                    $item->tanggal_submit,
+                    $item->tanggal_approve,
+                ], ';');
+
+                $counter++;
+                if ($counter % 1000 === 0) {
+                    flush();
                 }
-            });
+            }
 
             fclose($file);
         }, 200, $headers);
     }
 
+    // ==========================================
+    // EXPORT DATA SMARTKEY (OPTIMIZED FOR LARGE DATA)
+    // ==========================================
+
     public function exportSmartkey(): StreamedResponse
     {
+        if (class_exists('\Barryvdh\Debugbar\Facades\Debugbar')) {
+            \Barryvdh\Debugbar\Facades\Debugbar::disable();
+        }
+
         $fileName = 'export_master_smartkey_' . date('Ymd_His') . '.csv';
         $headers  = [
             "Content-type"        => "text/csv; charset=UTF-8",
@@ -424,22 +599,51 @@ class DataManagementController extends Controller
         ];
 
         return response()->stream(function () {
+            set_time_limit(0);
+            ini_set('memory_limit', '512M');
+
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+
             $file = fopen('php://output', 'w');
             fputs($file, "\xEF\xBB\xBF");
+
             fputcsv($file, [
-                'Serial Number', 'New SN', 'Tower ID', 'Site Name', 'Kota/Kab', 
-                'Long Lat', 'Infrako', 'Status', 'Status Aktifitas', 'KSM', 'Posisi Unit', 'Batch'
+                'Infrako', 'KSM', 'Batch', 'Lock ID', 'Serial Number', 'Tower ID', 
+                'Site Name', 'Kota/Kab', 'Status', 'Posisi Unit', 'Status Aktifitas', 'Long Lat'
             ], ';');
 
-            SmartkeyMaster::chunk(500, function ($rows) use ($file) {
-                foreach ($rows as $item) {
-                    fputcsv($file, [
-                        $item->serial_number, $item->new_sn, $item->tower_id, $item->site_name,
-                        $item->kota_kab, $item->long_lat, $item->infrako, $item->status,
-                        $item->status_aktifitas, $item->ksm, $item->posisi_unit, $item->batch,
-                    ], ';');
+            $query = DB::table('smartkey_masters')
+                ->select([
+                    'infrako', 'ksm', 'batch', 'lock_id', 'serial_number',
+                    'tower_id', 'site_name', 'kota_kab', 'status',
+                    'posisi_unit', 'status_aktifitas', 'long_lat'
+                ])
+                ->orderBy('id', 'asc');
+
+            $counter = 0;
+            foreach ($query->cursor() as $item) {
+                fputcsv($file, [
+                    $item->infrako,
+                    $item->ksm,
+                    $item->batch,
+                    $item->lock_id,
+                    $item->serial_number,
+                    $item->tower_id,
+                    $item->site_name,
+                    $item->kota_kab,
+                    $item->status,
+                    $item->posisi_unit,
+                    $item->status_aktifitas,
+                    $item->long_lat,
+                ], ';');
+
+                $counter++;
+                if ($counter % 1000 === 0) {
+                    flush();
                 }
-            });
+            }
 
             fclose($file);
         }, 200, $headers);

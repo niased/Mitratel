@@ -375,7 +375,7 @@ class DashboardController extends Controller
             ->get();
 
         $skMapData = (clone $skQuery)
-            ->select(['long_lat', 'site_name', 'tower_id', 'serial_number', 'new_sn', 'infrako', 'status_aktifitas', 'kota_kab', 'posisi_unit', 'ksm'])
+            ->select(['long_lat', 'site_name', 'tower_id', 'serial_number', 'infrako', 'status_aktifitas', 'kota_kab', 'posisi_unit', 'ksm'])
             ->whereNotNull('long_lat')
             ->where('long_lat', '!=', '')
             ->where('long_lat', 'NOT LIKE', '%#N/A%')
@@ -403,7 +403,7 @@ class DashboardController extends Controller
                     'lng'              => $lng,
                     'site_name'        => $item->site_name ?? '-',
                     'tower_id'         => $item->tower_id ?? '-',
-                    'serial_number'    => $item->serial_number ?? $item->new_sn ?? '-',
+                    'serial_number'    => $item->serial_number ?? '-',
                     'infrako'          => $item->infrako ?? '-',
                     'kota_kab'         => $item->kota_kab ?? '-',
                     'posisi_unit'      => $item->posisi_unit ?? '-',

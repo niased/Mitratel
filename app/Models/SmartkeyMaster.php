@@ -11,6 +11,6 @@ class SmartkeyMaster extends Model
 
     protected $table = 'smartkey_masters';
 
-    // Menggunakan guarded kosong agar semua field diizinkan untuk di-insert/update
+    // Menggunakan guarded kosong agar semua kolom (termasuk lock_id) dapat diisi via mass assignment
     protected $guarded = [];
 }

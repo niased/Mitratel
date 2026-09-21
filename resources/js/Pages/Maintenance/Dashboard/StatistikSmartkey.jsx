@@ -24,7 +24,6 @@ import {
 } from 'recharts';
 import Map from '@/components/Map';
 
-// Konfigurasi Status
 const SMARTKEY_STATUS_CONFIG = {
     LOCKED: {
         label: 'LOCKED',
@@ -49,7 +48,6 @@ const SMARTKEY_STATUS_CONFIG = {
     },
 };
 
-// Normalisasi Status agar HANYA menghasilkan 3 String Persis
 const normalizeStatus = (statusStr) => {
     if (!statusStr) return '#N/A';
     const clean = String(statusStr).toUpperCase().replace(/[^A-Z0-9#]/g, '');
@@ -64,7 +62,7 @@ const getSmartkeyPopupData = (item, lat, lng) => {
         title: props.site_name || props.site_id || 'Site SmartKey',
         details: [
             { label: 'Tower ID', value: props.tower_id || '-' },
-            { label: 'SN Key', value: props.serial_number || props.new_sn || '-' },
+            { label: 'SN Key', value: props.serial_number || '-' },
             { label: 'Personil KSM', value: props.ksm || '-' },
             { label: 'Infrako', value: props.infrako || '-' },
             { label: 'Kota / Kab', value: props.kota_kab || '-' },
@@ -82,7 +80,6 @@ const getSmartkeyPopupData = (item, lat, lng) => {
 export default function StatistikSmartkey({ summary = {} }) {
     const activeSummary = summary?.summary || summary || {};
     const activeChart = summary?.chart || summary?.chart_data || [];
-
     const activeMapRaw = useMemo(() => {
         if (Array.isArray(summary?.map_data) && summary.map_data.length > 0) return summary.map_data;
         if (Array.isArray(summary?.mapData) && summary.mapData.length > 0) return summary.mapData;
@@ -104,7 +101,6 @@ export default function StatistikSmartkey({ summary = {} }) {
         }
     };
 
-    // KPI Summary
     const totalUnit = Number(activeSummary.total_unit ?? 0);
     const totalAktif = Number(activeSummary.count_aktif ?? 0);
     const totalProblem = Number(activeSummary.count_problem ?? 0);
@@ -112,16 +108,13 @@ export default function StatistikSmartkey({ summary = {} }) {
     const countUnlocked = Number(activeSummary.count_unlocked ?? 0);
     const countNA = Number(activeSummary.count_na ?? 0);
 
-    // Normalisasi Data Peta
     const normalizedMapData = useMemo(() => {
         if (!Array.isArray(activeMapRaw)) return [];
-
         return activeMapRaw
             .map((item) => {
                 if (!item) return null;
                 let lat = Number(item.latitude || item.lat);
                 let lng = Number(item.longitude || item.lng);
-
                 if ((isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) && item.long_lat) {
                     const parts = String(item.long_lat)
                         .split(/[\s,;\/]+/)
@@ -133,11 +126,8 @@ export default function StatistikSmartkey({ summary = {} }) {
                         else { lng = parts[0]; lat = parts[1]; }
                     }
                 }
-
                 if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return null;
-
                 const statusClean = normalizeStatus(item.status_aktifitas || item.status);
-
                 return {
                     ...item,
                     latitude: lat,
@@ -146,7 +136,6 @@ export default function StatistikSmartkey({ summary = {} }) {
                     lng: lng,
                     position: [lat, lng],
                     coordinates: [lng, lat],
-
                     type: 'Feature',
                     geometry: {
                         type: 'Point',
@@ -160,7 +149,6 @@ export default function StatistikSmartkey({ summary = {} }) {
                         latitude: lat,
                         longitude: lng,
                     },
-
                     status_aktifitas: statusClean,
                     status: statusClean,
                 };
@@ -188,7 +176,6 @@ export default function StatistikSmartkey({ summary = {} }) {
                 const unlocked = Number(item.unlocked || 0);
                 const total = Number(item.total || 0);
                 const naCalculated = item.na !== undefined ? Number(item.na) : Math.max(0, total - (locked + unlocked));
-
                 return {
                     name: item.infrako || 'Unassigned',
                     Locked: locked,
@@ -203,7 +190,6 @@ export default function StatistikSmartkey({ summary = {} }) {
 
     return (
         <div className="space-y-4">
-            {/* KPI CARDS GRID */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                 <div className="bg-white/80 dark:bg-slate-900/50 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
                     <div>
@@ -217,7 +203,6 @@ export default function StatistikSmartkey({ summary = {} }) {
                     </div>
                     <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-2 font-normal leading-tight">Total terdaftar di sistem</p>
                 </div>
-
                 <div className="bg-white/80 dark:bg-slate-900/50 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
                     <div>
                         <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400">
@@ -230,7 +215,6 @@ export default function StatistikSmartkey({ summary = {} }) {
                     </div>
                     <p className="text-[10px] text-emerald-600/70 dark:text-emerald-400/60 mt-2 font-normal leading-tight">Operasional normal</p>
                 </div>
-
                 <div className="bg-white/80 dark:bg-slate-900/50 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
                     <div>
                         <div className="flex items-center justify-between text-rose-600 dark:text-rose-400">
@@ -243,7 +227,6 @@ export default function StatistikSmartkey({ summary = {} }) {
                     </div>
                     <p className="text-[10px] text-rose-600/70 dark:text-rose-400/60 mt-2 font-normal leading-tight">Perlu tindak lanjut</p>
                 </div>
-
                 <div className="bg-white/80 dark:bg-slate-900/50 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
                     <div>
                         <div className="flex items-center justify-between text-sky-600 dark:text-sky-400">
@@ -256,7 +239,6 @@ export default function StatistikSmartkey({ summary = {} }) {
                     </div>
                     <p className="text-[10px] text-sky-600/70 dark:text-sky-400/60 mt-2 font-normal leading-tight">Status posisi terkunci</p>
                 </div>
-
                 <div className="bg-white/80 dark:bg-slate-900/50 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
                     <div>
                         <div className="flex items-center justify-between text-amber-600 dark:text-amber-400">
@@ -269,7 +251,6 @@ export default function StatistikSmartkey({ summary = {} }) {
                     </div>
                     <p className="text-[10px] text-amber-600/70 dark:text-amber-400/60 mt-2 font-normal leading-tight">Sedang terbuka / diakses</p>
                 </div>
-
                 <div className="bg-white/80 dark:bg-slate-900/50 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
                     <div>
                         <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
@@ -284,7 +265,6 @@ export default function StatistikSmartkey({ summary = {} }) {
                 </div>
             </div>
 
-            {/* MAP SECTION */}
             <div className="bg-white/80 dark:bg-slate-900/50 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
                 <div className="px-5 py-3 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -299,7 +279,7 @@ export default function StatistikSmartkey({ summary = {} }) {
                 </div>
                 <div className="p-0">
                     <Map 
-                        data={activeMapRaw} // <--- Kirim activeMapRaw (BUKAN normalizedMapData)
+                        data={activeMapRaw}
                         statusKey="status_aktifitas"
                         statusConfig={SMARTKEY_STATUS_CONFIG}
                         getPopupData={getSmartkeyPopupData}
@@ -307,9 +287,7 @@ export default function StatistikSmartkey({ summary = {} }) {
                 </div>
             </div>
 
-            {/* CHARTS SECTION */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* DONUT CHART */}
                 <div className="bg-white/80 dark:bg-slate-900/50 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-5 flex flex-col justify-between shadow-sm">
                     <div className="flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-slate-800/80">
                         <PieChartIcon className="w-4 h-4 text-slate-400" />
@@ -317,7 +295,6 @@ export default function StatistikSmartkey({ summary = {} }) {
                             Proporsi Status Aktivitas Global
                         </h3>
                     </div>
-
                     <div className="relative w-full h-[220px] my-2 flex items-center justify-center">
                         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
                             <span className="text-3xl font-bold text-slate-800 dark:text-white tracking-tight">
@@ -327,7 +304,6 @@ export default function StatistikSmartkey({ summary = {} }) {
                                 Total Keys
                             </span>
                         </div>
-
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie
@@ -359,7 +335,6 @@ export default function StatistikSmartkey({ summary = {} }) {
                             </PieChart>
                         </ResponsiveContainer>
                     </div>
-
                     <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-100 dark:border-slate-800/80">
                         {donutData.map((item) => (
                             <div key={item.name} className="flex flex-col items-center p-2 rounded-lg bg-slate-50 dark:bg-slate-950/50 border border-slate-200/60 dark:border-slate-800/60">
@@ -377,7 +352,6 @@ export default function StatistikSmartkey({ summary = {} }) {
                     </div>
                 </div>
 
-                {/* BAR CHART */}
                 <div className="bg-white/80 dark:bg-slate-900/50 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-5 flex flex-col justify-between shadow-sm">
                     <div className="flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-slate-800/80">
                         <BarChart3 className="w-4 h-4 text-slate-400" />
@@ -385,7 +359,6 @@ export default function StatistikSmartkey({ summary = {} }) {
                             Status Aktivitas per Region Infrako (Top 6)
                         </h3>
                     </div>
-
                     <div className="w-full h-[260px] mt-4">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={barInfrakoData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>

@@ -120,9 +120,7 @@ class DataAutoReportController extends Controller
             $updatedCount  = count($existingIds);
             $insertedCount = count($uniqueIds) - $updatedCount;
 
-            // =========================================================================
-            // JIKA HANYA MODE PRATINJAU (XLOOKUP & CEK APPROVE N/A SEBELUM COMMIT)
-            // =========================================================================
+            // Mode Pratinjau
             if ($previewOnly) {
                 $previewList = [];
 
@@ -149,16 +147,14 @@ class DataAutoReportController extends Controller
 
                 return response()->json([
                     'status'   => 'preview',
-                    'inserted' => $insertedCount, // Jumlah data baru (#N/A)
-                    'updated'  => $updatedCount,  // Jumlah data update status
+                    'inserted' => $insertedCount,
+                    'updated'  => $updatedCount,
                     'skipped'  => $skippedCount,
                     'rows'     => $previewList,
                 ]);
             }
 
-            // =========================================================================
-            // EKSEKUSI COMMIT PERMANEN KE DATABASE MASTER DATA
-            // =========================================================================
+            // Eksekusi Commit Permanen
             DB::beginTransaction();
 
             if (!empty($existingIds)) {
@@ -189,7 +185,7 @@ class DataAutoReportController extends Controller
     }
 
     /**
-     * Engine High-Speed Batch: Smart Key Sync Massal
+     * Engine High-Speed Batch: Smart Key Sync Massal (Safe Upsert & XLOOKUP)
      */
     public function processSmartkeyBatch(Request $request): JsonResponse
     {
@@ -204,16 +200,34 @@ class DataAutoReportController extends Controller
         $sanitizedRows = [];
 
         foreach ($rows as $row) {
-            $sn              = $this->cleanString($row['serial_number'] ?? $row['sn'] ?? $row['lock_id'] ?? '', 100);
+            $lockId          = $this->cleanString($row['lock_id'] ?? $row['lockid'] ?? '', 100);
+            $sn              = trim((string)($row['serial_number'] ?? $row['sn'] ?? $row['lock_id'] ?? ''));
+            $towerId         = $this->cleanString($row['tower_id'] ?? $row['site_code'] ?? $row['site_id'] ?? '', 100);
+            $siteName        = $this->cleanString($row['site_name'] ?? $row['sitename'] ?? '', 255);
             $statusAktifitas = $this->cleanString($row['status_aktifitas'] ?? $row['status_aktivitas'] ?? $row['status'] ?? '', 100);
             $longLat         = $this->cleanString($row['long_lat'] ?? $row['longlat'] ?? $row['coordinate'] ?? '', 255);
 
-            if ($sn === '') continue;
+            if ($sn === '' && $lockId === '') continue;
+            if ($sn === '') $sn = $lockId;
+            if ($lockId === '') $lockId = $sn;
+
+            // Normalisasi status ke format standar (LOCKED / UNLOCKED)
+            $upperStatus = strtoupper($statusAktifitas);
+            if (str_contains($upperStatus, 'UNLOCK') || str_contains($upperStatus, 'OPEN')) {
+                $statusClean = 'UNLOCKED';
+            } elseif (str_contains($upperStatus, 'LOCK') || str_contains($upperStatus, 'CLOSE')) {
+                $statusClean = 'LOCKED';
+            } else {
+                $statusClean = $statusAktifitas !== '' ? strtoupper($statusAktifitas) : 'LOCKED';
+            }
 
             $sns[] = $sn;
             $sanitizedRows[$sn] = [
+                'lock_id'          => $lockId,
                 'serial_number'    => $sn,
-                'status_aktifitas' => $statusAktifitas !== '' ? $statusAktifitas : 'LOCKED',
+                'tower_id'         => $towerId,
+                'site_name'        => $siteName,
+                'status_aktifitas' => $statusClean,
                 'long_lat'         => $longLat,
                 'status'           => 'AKTIF',
                 'created_at'       => $now,
@@ -225,58 +239,113 @@ class DataAutoReportController extends Controller
             return response()->json(['status' => 'success', 'synced' => 0, 'rows' => []]);
         }
 
-        $uniqueSns   = array_values(array_unique($sns));
-        $allInserts  = array_values($sanitizedRows);
-        $syncedCount = count($uniqueSns);
+        $uniqueSns  = array_values(array_unique($sns));
+        $allInserts = array_values($sanitizedRows);
+        $totalCount = count($uniqueSns);
 
         try {
-            // Cek data yang sudah ada di Master Data SmartKey
-            $existingSns = DB::table('smartkey_masters')
+            // XLOOKUP ke Master Data SmartKey
+            $existingMastersRaw = DB::table('smartkey_masters')
                 ->whereIn('serial_number', $uniqueSns)
-                ->pluck('status_aktifitas', 'serial_number')
-                ->toArray();
+                ->get(['serial_number', 'lock_id', 'tower_id', 'status_aktifitas', 'site_name', 'long_lat']);
 
+            $existingMasters = [];
+            foreach ($existingMastersRaw as $item) {
+                $cleanKey = trim((string)$item->serial_number);
+                $existingMasters[$cleanKey] = $item;
+            }
+
+            // 1. MODE PRATINJAU (Preview XLOOKUP sebelum commit)
             if ($previewOnly) {
                 $previewList = [];
+                $existingCount = 0;
+
                 foreach ($allInserts as $row) {
-                    $exists = array_key_exists($row['serial_number'], $existingSns);
-                    $previewList[] = array_merge($row, [
-                        'is_new'         => !$exists,
-                        'xlookup_status' => !$exists ? '#N/A (SN Baru)' : 'Update Status',
-                        'old_status'     => $exists ? ($existingSns[$row['serial_number']] ?? '-') : '#N/A',
-                    ]);
+                    $snKey = trim((string)$row['serial_number']);
+                    $exists = array_key_exists($snKey, $existingMasters);
+                    
+                    if ($exists) {
+                        $existingCount++;
+                        $oldMaster = $existingMasters[$snKey];
+                        $oldStatus = $oldMaster->status_aktifitas ?? '-';
+                        $siteName  = $row['site_name'] !== '' ? $row['site_name'] : ($oldMaster->site_name ?? '-');
+                        $towerId   = $row['tower_id'] !== '' ? $row['tower_id'] : ($oldMaster->tower_id ?? '-');
+                        $longLat   = $row['long_lat'] !== '' ? $row['long_lat'] : ($oldMaster->long_lat ?? '-');
+                        $lockId    = $row['lock_id'] !== '' ? $row['lock_id'] : ($oldMaster->lock_id ?? '-');
+
+                        $previewList[] = array_merge($row, [
+                            'is_new'         => false,
+                            'xlookup_status' => 'UPDATE',
+                            'old_status'     => $oldStatus,
+                            'lock_id'        => $lockId,
+                            'tower_id'       => $towerId,
+                            'site_name'      => $siteName,
+                            'long_lat'       => $longLat,
+                            'status_desc'    => "Update ({$oldStatus} → {$row['status_aktifitas']})",
+                        ]);
+                    } else {
+                        $previewList[] = array_merge($row, [
+                            'is_new'         => true,
+                            'xlookup_status' => '#N/A',
+                            'old_status'     => '#N/A',
+                            'tower_id'       => $row['tower_id'] !== '' ? $row['tower_id'] : '#N/A',
+                            'site_name'      => $row['site_name'] !== '' ? $row['site_name'] : '#N/A',
+                            'status_desc'    => '#N/A (Data Baru)',
+                        ]);
+                    }
                 }
 
                 return response()->json([
-                    'status' => 'preview',
-                    'total'  => $syncedCount,
-                    'synced' => count($existingSns),
-                    'new'    => $syncedCount - count($existingSns),
-                    'rows'   => $previewList,
+                    'status'    => 'preview',
+                    'total'     => $totalCount,
+                    'synced'    => $existingCount,
+                    'new_count' => $totalCount - $existingCount,
+                    'rows'      => $previewList,
                 ]);
             }
 
+            // 2. MODE COMMIT (Perbarui telemetri tanpa merusak metadata master yang ada)
             DB::beginTransaction();
-            DB::table('smartkey_masters')->whereIn('serial_number', $uniqueSns)->delete();
 
-            if (!empty($allInserts)) {
-                foreach (array_chunk($allInserts, 500) as $chunk) {
-                    DB::table('smartkey_masters')->insert($chunk);
+            foreach ($allInserts as $data) {
+                $snKey = trim((string)$data['serial_number']);
+                $updateData = [
+                    'status_aktifitas' => $data['status_aktifitas'],
+                    'status'           => 'AKTIF',
+                    'updated_at'       => $now,
+                ];
+
+                if ($data['lock_id'] !== '') {
+                    $updateData['lock_id'] = $data['lock_id'];
                 }
+                if ($data['tower_id'] !== '') {
+                    $updateData['tower_id'] = $data['tower_id'];
+                }
+                if ($data['site_name'] !== '') {
+                    $updateData['site_name'] = $data['site_name'];
+                }
+                if ($data['long_lat'] !== '') {
+                    $updateData['long_lat'] = $data['long_lat'];
+                }
+
+                DB::table('smartkey_masters')->updateOrInsert(
+                    ['serial_number' => $snKey],
+                    $updateData
+                );
             }
 
             DB::commit();
 
             return response()->json([
                 'status' => 'success',
-                'synced' => $syncedCount,
+                'synced' => $totalCount,
             ]);
         } catch (\Throwable $e) {
             if (!$previewOnly) {
                 DB::rollBack();
             }
             Log::error("Process SmartKey Batch Error: " . $e->getMessage());
-            return response()->json(['message' => 'Gagal memproses batch: ' . $e->getMessage()], 500);
+            return response()->json(['message' => 'Gagal memproses batch SmartKey: ' . $e->getMessage()], 500);
         }
     }
 

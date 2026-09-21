@@ -5,9 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Plus, Trash2, PlusCircle, ClipboardPaste, AlertCircle } from 'lucide-react';
-import { router, usePage } from '@inertiajs/react'; // 👈 Tambah usePage
+import { router, usePage } from '@inertiajs/react';
 
-// IMPORT PERABOTAN KITA
 import Tabel from '@/components/Tabel';
 import Modal from '@/components/Modal';
 
@@ -29,8 +28,8 @@ const TABLE_COLUMNS = {
         { key: 'infrako', altKeys: ['infrako'], label: 'Infrako' },
         { key: 'ksm', altKeys: ['ksm'], label: 'KSM' },
         { key: 'batch', altKeys: ['batch'], label: 'Batch' },
-        { key: 'serial_number', altKeys: ['serial_number', 'sn', 'lock_id'], label: 'Serial Number (Lock ID)' },
-        { key: 'new_sn', altKeys: ['new_sn'], label: 'New SN' },
+        { key: 'lock_id', altKeys: ['lock_id', 'id_lock'], label: 'Lock ID' },
+        { key: 'serial_number', altKeys: ['serial_number', 'sn'], label: 'Serial Number' },
         { key: 'tower_id', altKeys: ['tower_id'], label: 'Tower ID' },
         { key: 'site_name', altKeys: ['site_name'], label: 'Site Name' },
         { key: 'kota_kab', altKeys: ['kota_kab', 'kota', 'kabupaten'], label: 'Kota / Kab' },
@@ -49,10 +48,9 @@ export default function CrudTable({
     onSelectRow,
     getRowNumber
 }) {
-    // 🔒 DETEKSI ROLE USER DARI INERTIA AUTH
     const { auth } = usePage().props;
     const userRole = auth?.user?.role || 'view';
-    const canWrite = userRole === 'admin' || userRole === 'staff'; // 👈 Admin & Staff boleh Edit/Tambah
+    const canWrite = userRole === 'admin' || userRole === 'staff';
 
     const getFieldValue = useCallback((item, colDef) => {
         if (!item || !colDef) return '';
@@ -67,17 +65,15 @@ export default function CrudTable({
     }, []);
 
     const getItemId = useCallback((item) => {
-        return item?.id || item?.rpm_id || item?.serial_number || item?.infrako;
+        return item?.id || item?.rpm_id || item?.serial_number || item?.lock_id || item?.infrako;
     }, []);
 
-    // CONFIG KOLOM DINAMIS DENGAN FORMATTER KHUSUS PER CELL
     const formattedColumns = useMemo(() => {
         const rawCols = TABLE_COLUMNS[subTab] || TABLE_COLUMNS.rpm;
         return rawCols.map(col => ({
             ...col,
             render: (item) => {
                 const value = getFieldValue(item, col);
-
                 switch (col.key) {
                     case 'rpm_id':
                         return <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{value || '-'}</span>;
@@ -92,7 +88,6 @@ export default function CrudTable({
                         const approveVal = String(value || '').toLowerCase();
                         const isBelumApproved = approveVal.includes('belum');
                         const isApproved = approveVal.includes('approve') || approveVal.includes('setuju') || approveVal.includes('sudah');
-
                         return (
                             <Badge variant="outline" className={`font-semibold ${
                                 isBelumApproved 
@@ -110,10 +105,10 @@ export default function CrudTable({
                     case 'batch':
                     case 'long_lat':
                         return <span className="text-xs font-mono">{value || '-'}</span>;
+                    case 'lock_id':
+                        return <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{value || '-'}</span>;
                     case 'serial_number':
                         return <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{value || '-'}</span>;
-                    case 'new_sn':
-                        return <span className="font-mono text-slate-600 dark:text-slate-300">{value || '-'}</span>;
                     case 'tower_id':
                         return <span className="font-mono">{value || '-'}</span>;
                     default:
@@ -126,7 +121,6 @@ export default function CrudTable({
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
-
     const [editData, setEditData] = useState({});
     const [addItems, setAddItems] = useState([]);
 
@@ -147,9 +141,8 @@ export default function CrudTable({
         let rawRows = pastedText.trim().split(/\r\n|\n|\r/).filter(row => row.trim().length > 0);
         
         if (rawRows.length === 1 && !rawRows[0].includes('\t')) return false;
-
         if (rawRows.length > MAX_ROWS_LIMIT) {
-            alert(`⚠️ Perhatian: Data paste berisi ${rawRows.length} baris. Dibatasi maksimal ${MAX_ROWS_LIMIT} baris.`);
+            alert(`Perhatian: Data paste berisi ${rawRows.length} baris. Dibatasi maksimal ${MAX_ROWS_LIMIT} baris.`);
             rawRows = rawRows.slice(0, MAX_ROWS_LIMIT);
         }
 
@@ -174,8 +167,8 @@ export default function CrudTable({
                 rowObj.infrako = cells[0] ?? '';
                 rowObj.ksm = cells[1] ?? '';
                 rowObj.batch = cells[2] ?? '';
-                rowObj.serial_number = cells[3] ?? '';
-                rowObj.new_sn = cells[4] ?? '';
+                rowObj.lock_id = cells[3] ?? '';
+                rowObj.serial_number = cells[4] ?? '';
                 rowObj.tower_id = cells[5] ?? '';
                 rowObj.site_name = cells[6] ?? '';
                 rowObj.kota_kab = cells[7] ?? '';
@@ -302,13 +295,11 @@ export default function CrudTable({
 
     return (
         <div className="space-y-3">
-            {/* SUB-HEADER BAR */}
             <div className="px-5 py-2.5 bg-slate-50/50 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Kelola Data Master {subTab.toUpperCase()}
                 </span>
                 
-                {/* 🔒 Sembunyikan Tombol Tambah jika role = view */}
                 {canWrite && (
                     <Button 
                         type="button" 
@@ -322,21 +313,18 @@ export default function CrudTable({
                 )}
             </div>
 
-            {/* PERABOTAN TABEL */}
             <Tabel
                 data={dataList}
                 columns={formattedColumns}
                 selectedIds={selectedIds}
                 onSelectAll={onSelectAll}
                 onSelectRow={onSelectRow}
-                /* 🔒 Pasang null jika user = view agar tombol Edit di baris tabel disembunyikan */
                 onEditRow={canWrite ? handleOpenEditModal : undefined}
                 getItemId={getItemId}
                 getRowNumber={getRowNumber}
                 emptyMessage={`Belum ada data Master ${subTab.toUpperCase()}.`}
             />
 
-            {/* PERABOTAN MODAL */}
             {canWrite && (
                 <Modal
                     isOpen={isModalOpen}
@@ -372,20 +360,17 @@ export default function CrudTable({
                         )
                     }
                 >
-                    {/* NOTICE BANNER */}
                     {!isEditMode && (
                         <Alert className="shrink-0 mb-3 bg-blue-50/60 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900/40 text-blue-700 dark:text-blue-300 p-2.5 flex items-start gap-2">
                             <AlertCircle className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                             <AlertDescription className="text-[11px] leading-relaxed">
-                                <strong>Smart Paste (Maks {MAX_ROWS_LIMIT} Baris):</strong> Tekan <strong>Ctrl + V</strong> untuk menempelkan sel dari Excel. Pastikan urutan 9 kolom Excel RPM meliputi: <em>ID RPM, Site ID, RTP, Mitra, Bulan, Tahun, Tanggal Submit, Tanggal Approve, Status Approve</em>.
+                                <strong>Smart Paste (Maks {MAX_ROWS_LIMIT} Baris):</strong> Tekan <strong>Ctrl + V</strong> untuk menempelkan sel dari Excel. Pastikan urutan 12 kolom SmartKey: <em>Infrako, KSM, Batch, Lock ID, Serial Number, Tower ID, Site Name, Kota/Kab, Status, Posisi Unit, Status Aktifitas, Long Lat</em>.
                             </AlertDescription>
                         </Alert>
                     )}
 
-                    {/* FORM BODY */}
                     <div className="space-y-4">
                         {isEditMode ? (
-                            /* MODE EDIT */
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-1">
                                 {subTab === 'rpm' ? (
                                     <>
@@ -442,7 +427,6 @@ export default function CrudTable({
                                 )}
                             </div>
                         ) : (
-                            /* MODE TAMBAH MULTI-ROW */
                             <div className="space-y-4">
                                 {addItems.map((item, itemIdx) => (
                                     <div 
@@ -465,7 +449,6 @@ export default function CrudTable({
                                                 </Button>
                                             )}
                                         </div>
-
                                         {subTab === 'rpm' ? (
                                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                                 <div className="space-y-1">
@@ -524,7 +507,6 @@ export default function CrudTable({
                                         )}
                                     </div>
                                 ))}
-
                                 <div className="flex items-center gap-2 pt-1">
                                     <Button
                                         type="button"

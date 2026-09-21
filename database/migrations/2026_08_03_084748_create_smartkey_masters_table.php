@@ -10,22 +10,22 @@ return new class extends Migration
     {
         Schema::create('smartkey_masters', function (Blueprint $table) {
             $table->id();
-            
+
             // Identifikasi Hardware & Lokasi
-            $table->string('serial_number')->nullable()->index();
-            $table->string('new_sn')->nullable();
+            $table->string('serial_number')->nullable()->index(); // SN tunggal utama
+            $table->string('lock_id')->nullable();               // Kebutuhan sync batch / auto-report
             $table->string('tower_id')->nullable();
             $table->string('site_name')->nullable();
             $table->string('kota_kab')->nullable();
-            $table->text('long_lat')->nullable();                    // Pengganti DMT Jabo (Untuk Peta Dashboard)
+            $table->text('long_lat')->nullable();
 
             // Kolom Kunci Pivot Chart (Filters, Columns, Rows, Values)
-            $table->string('infrako')->nullable()->index();          // Filter Cluster/Region Infrako
-            $table->string('status')->nullable()->index();           // Filter Status Unit (Aktif, Rusak, Hilang)
-            $table->string('status_aktifitas')->nullable()->index(); // Columns Kondisi Kunci (Locked, Unlocked, #N/A)
-            $table->string('ksm')->nullable()->index();              // Rows Personil KSM
-            $table->string('posisi_unit')->nullable()->index();      // Rows Sub-lokasi (Site, HB, RO)
-            $table->string('batch')->nullable();                     // Values Aggregation Total
+            $table->string('infrako')->nullable()->index();
+            $table->string('status')->nullable()->index();
+            $table->string('status_aktifitas')->nullable()->index();
+            $table->string('ksm')->nullable()->index();
+            $table->string('posisi_unit')->nullable()->index();
+            $table->string('batch')->nullable();
 
             $table->timestamps();
         });
