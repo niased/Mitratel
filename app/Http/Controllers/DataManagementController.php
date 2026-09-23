@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Models\RpmMaster;
+use App\Models\RpmTiaraMaster;
 use App\Models\SmartkeyMaster;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -29,12 +31,12 @@ class DataManagementController extends Controller
     public function index(Request $request)
     {
         $search  = $request->input('search');
-        $perPage = $request->input('per_page', 10);
+        $perPage = (int)$request->input('per_page', 10);
         $order   = $request->input('order', 'asc');
 
         $order = in_array(strtolower($order), ['asc', 'desc'], true) ? strtolower($order) : 'asc';
 
-        // --- Query RPM Master ---
+        // --- Query RPM Master (ANT) ---
         $rpmQuery = RpmMaster::query();
         if ($search) {
             $rpmQuery->where(function ($q) use ($search) {
@@ -46,8 +48,24 @@ class DataManagementController extends Controller
             });
         }
         $rpmMasters = $rpmQuery->orderBy('id', $order)
-                               ->paginate($perPage)
+                               ->paginate($perPage, ['*'], 'rpm_page')
                                ->withQueryString();
+
+        // --- Query RPM TIARA Master ---
+        $tiaraQuery = RpmTiaraMaster::query();
+        if ($search) {
+            $tiaraQuery->where(function ($q) use ($search) {
+                $q->where('ticket_number', 'like', "%{$search}%")
+                  ->orWhere('siteoperator_code', 'like', "%{$search}%")
+                  ->orWhere('siteoperator_name', 'like', "%{$search}%")
+                  ->orWhere('company_name', 'like', "%{$search}%")
+                  ->orWhere('ticket_statusname', 'like', "%{$search}%")
+                  ->orWhere('dashboard_status', 'like', "%{$search}%");
+            });
+        }
+        $tiaraMasters = $tiaraQuery->orderBy('id', $order)
+                                   ->paginate($perPage, ['*'], 'tiara_page')
+                                   ->withQueryString();
 
         // --- Query Smartkey Master ---
         $smartkeyQuery = SmartkeyMaster::query();
@@ -62,12 +80,18 @@ class DataManagementController extends Controller
             });
         }
         $smartkeyMasters = $smartkeyQuery->orderBy('id', $order)
-                                         ->paginate($perPage)
+                                         ->paginate($perPage, ['*'], 'smartkey_page')
                                          ->withQueryString();
 
         return Inertia::render('Maintenance/DataManagement/Index', [
             'rpmMasters'      => $rpmMasters,
+            'tiaraMasters'    => $tiaraMasters,
             'smartkeyMasters' => $smartkeyMasters,
+            'summary'         => [
+                'total_rpm'      => RpmMaster::count('id'),
+                'total_tiara'    => RpmTiaraMaster::count('id'),
+                'total_smartkey' => SmartkeyMaster::count('id'),
+            ],
             'filters'         => $request->only(['search', 'per_page', 'order', 'tab']),
         ]);
     }
@@ -81,11 +105,11 @@ class DataManagementController extends Controller
         $items = $request->has('items') ? $request->input('items') : [$request->all()];
 
         if (empty($items) || !is_array($items)) {
-            return back()->with('error', 'Tidak ada data RPM yang dikirim.');
+            return redirect()->back()->with('error', 'Tidak ada data RPM yang dikirim.');
         }
 
         $insertData = [];
-        $now = now();
+        $now = Carbon::now();
 
         foreach ($items as $item) {
             $rpmId          = $this->nullableString($item['rpm_id'] ?? $item['id_rpm'] ?? null);
@@ -126,7 +150,7 @@ class DataManagementController extends Controller
         }
 
         if (empty($insertData)) {
-            return back()->with('error', 'Gagal menyimpan. Tidak ada baris data yang valid untuk disimpan.');
+            return redirect()->back()->with('error', 'Gagal menyimpan. Tidak ada baris data yang valid untuk disimpan.');
         }
 
         try {
@@ -135,11 +159,11 @@ class DataManagementController extends Controller
             DB::commit();
 
             $total = count($insertData);
-            return back()->with('success', "Berhasil menambahkan $total data Master RPM baru.");
+            return redirect()->back()->with('success', "Berhasil menambahkan $total data Master RPM baru.");
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error("Store RPM Error: " . $e->getMessage());
-            return back()->with('error', 'Gagal menyimpan data RPM: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Gagal menyimpan data RPM: ' . $e->getMessage());
         }
     }
 
@@ -167,10 +191,10 @@ class DataManagementController extends Controller
             }
 
             $rpm->update($data);
-            return back()->with('success', 'Data Master RPM berhasil diperbarui.');
+            return redirect()->back()->with('success', 'Data Master RPM berhasil diperbarui.');
         } catch (\Exception $e) {
             Log::error("Update RPM Error: " . $e->getMessage());
-            return back()->with('error', 'Gagal memperbarui data: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Gagal memperbarui data: ' . $e->getMessage());
         }
     }
 
@@ -185,10 +209,10 @@ class DataManagementController extends Controller
             $rpm = RpmMaster::findOrFail($targetId);
             $rpm->delete();
 
-            return back()->with('success', 'Data Master RPM berhasil dihapus.');
+            return redirect()->back()->with('success', 'Data Master RPM berhasil dihapus.');
         } catch (\Exception $e) {
             Log::error("Delete RPM Error: " . $e->getMessage());
-            return back()->with('error', 'Gagal menghapus data: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Gagal menghapus data: ' . $e->getMessage());
         }
     }
 
@@ -202,10 +226,10 @@ class DataManagementController extends Controller
         try {
             $count = count($request->ids);
             RpmMaster::destroy($request->ids);
-            return back()->with('success', "$count data Master RPM berhasil dihapus.");
+            return redirect()->back()->with('success', "$count data Master RPM berhasil dihapus.");
         } catch (\Exception $e) {
             Log::error("Bulk Delete RPM Error: " . $e->getMessage());
-            return back()->with('error', 'Gagal menghapus data terpilih: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Gagal menghapus data terpilih: ' . $e->getMessage());
         }
     }
 
@@ -215,7 +239,7 @@ class DataManagementController extends Controller
     }
 
     // ==========================================
-    // STORE MULTIPLE SMARTKEY MASTER (LOCK ID & SN TERSENDIRI)
+    // STORE MULTIPLE SMARTKEY MASTER
     // ==========================================
 
     public function storeSmartkey(Request $request)
@@ -223,11 +247,11 @@ class DataManagementController extends Controller
         $items = $request->has('items') ? $request->input('items') : [$request->all()];
 
         if (empty($items) || !is_array($items)) {
-            return back()->with('error', 'Tidak ada data Smart Key yang dikirim.');
+            return redirect()->back()->with('error', 'Tidak ada data Smart Key yang dikirim.');
         }
 
         $insertData = [];
-        $now = now();
+        $now = Carbon::now();
 
         foreach ($items as $item) {
             $lockId          = $this->nullableString($item['lock_id'] ?? $item['id_lock'] ?? null);
@@ -252,7 +276,6 @@ class DataManagementController extends Controller
                 continue;
             }
 
-            // Fallback saling isi jika salah satu kosong
             if (is_null($sn) && !is_null($lockId)) { $sn = $lockId; }
             if (is_null($lockId) && !is_null($sn)) { $lockId = $sn; }
             if (is_null($sn)) { $sn = 'SK-UNKNOWN'; $lockId = 'SK-UNKNOWN'; }
@@ -276,7 +299,7 @@ class DataManagementController extends Controller
         }
 
         if (empty($insertData)) {
-            return back()->with('error', 'Gagal menyimpan. Tidak ada baris data yang valid untuk disimpan.');
+            return redirect()->back()->with('error', 'Gagal menyimpan. Tidak ada baris data yang valid untuk disimpan.');
         }
 
         try {
@@ -285,11 +308,11 @@ class DataManagementController extends Controller
             DB::commit();
 
             $total = count($insertData);
-            return back()->with('success', "Berhasil menambahkan $total data Master Smart Key baru.");
+            return redirect()->back()->with('success', "Berhasil menambahkan $total data Master Smart Key baru.");
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error("Store Smart Key Error: " . $e->getMessage());
-            return back()->with('error', 'Gagal menyimpan data Smart Key: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Gagal menyimpan data Smart Key: ' . $e->getMessage());
         }
     }
 
@@ -323,10 +346,10 @@ class DataManagementController extends Controller
             }
 
             $smartkey->update($data);
-            return back()->with('success', 'Data Master Smart Key berhasil diperbarui.');
+            return redirect()->back()->with('success', 'Data Master Smart Key berhasil diperbarui.');
         } catch (\Exception $e) {
             Log::error("Update Smart Key Error: " . $e->getMessage());
-            return back()->with('error', 'Gagal memperbarui data: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Gagal memperbarui data: ' . $e->getMessage());
         }
     }
 
@@ -341,10 +364,10 @@ class DataManagementController extends Controller
             $smartkey = SmartkeyMaster::findOrFail($targetId);
             $smartkey->delete();
 
-            return back()->with('success', 'Data Master Smart Key berhasil dihapus.');
+            return redirect()->back()->with('success', 'Data Master Smart Key berhasil dihapus.');
         } catch (\Exception $e) {
             Log::error("Delete Smart Key Error: " . $e->getMessage());
-            return back()->with('error', 'Gagal menghapus data: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Gagal menghapus data: ' . $e->getMessage());
         }
     }
 
@@ -358,10 +381,10 @@ class DataManagementController extends Controller
         try {
             $count = count($request->ids);
             SmartkeyMaster::destroy($request->ids);
-            return back()->with('success', "$count data Master Smart Key berhasil dihapus.");
+            return redirect()->back()->with('success', "$count data Master Smart Key berhasil dihapus.");
         } catch (\Exception $e) {
             Log::error("Bulk Delete Smart Key Error: " . $e->getMessage());
-            return back()->with('error', 'Gagal menghapus data terpilih: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Gagal menghapus data terpilih: ' . $e->getMessage());
         }
     }
 
@@ -371,7 +394,7 @@ class DataManagementController extends Controller
     }
 
     // ==========================================
-    // PROCESS BATCH SMARTKEY (OPTIMIZED INDEX QUERY)
+    // PROCESS BATCH SMARTKEY
     // ==========================================
 
     public function processSmartkeyBatch(Request $request)
@@ -392,11 +415,9 @@ class DataManagementController extends Controller
             return response()->json(['rows' => [], 'total' => 0, 'synced' => 0, 'new_count' => 0]);
         }
 
-        // Ekstraksi ID & Serial Number
         $lockIds = array_values(array_filter(array_map(fn($r) => trim($r['lock_id'] ?? ''), $rows)));
         $sns     = array_values(array_filter(array_map(fn($r) => trim($r['serial_number'] ?? ''), $rows)));
 
-        // PISAHKAN QUERY: Memaksa MySQL memakai Index secara cepat tanpa klausa 'OR'
         $masterByLockId = [];
         $masterBySn     = [];
 
@@ -425,7 +446,7 @@ class DataManagementController extends Controller
         $seenUpsert    = [];
         $syncedCount   = 0;
         $newCount      = 0;
-        $now           = now();
+        $now           = Carbon::now();
 
         foreach ($rows as $row) {
             $lockId = trim($row['lock_id'] ?? '');
@@ -438,7 +459,6 @@ class DataManagementController extends Controller
             $effLockId = substr($lockId ?: $sn, 0, 100);
             $effSn     = substr($sn ?: $lockId, 0, 100);
 
-            // Matching XLOOKUP di memori
             $existing = $masterByLockId[$effLockId] ?? $masterBySn[$effSn] ?? null;
 
             if ($existing) {
@@ -463,7 +483,6 @@ class DataManagementController extends Controller
                 'keterangan'       => $existing ? 'Update Telemetri' : '#N/A (Data Baru)',
             ];
 
-            // Cegah duplikasi key lock_id dalam 1 batch upsert
             if (!isset($seenUpsert[$effLockId])) {
                 $seenUpsert[$effLockId] = true;
                 $upsertData[] = [
@@ -480,7 +499,6 @@ class DataManagementController extends Controller
             }
         }
 
-        // 1. Mode Pratinjau
         if ($previewOnly) {
             return response()->json([
                 'rows'      => $processedRows,
@@ -490,7 +508,6 @@ class DataManagementController extends Controller
             ]);
         }
 
-        // 2. Mode Simpan ke Database
         try {
             DB::beginTransaction();
 
@@ -520,13 +537,14 @@ class DataManagementController extends Controller
     }
 
     // ==========================================
-    // EXPORT DATA RPM (OPTIMIZED FOR LARGE DATA)
+    // EXPORT DATA RPM
     // ==========================================
 
     public function exportRpm(): StreamedResponse
     {
-        if (class_exists('\Barryvdh\Debugbar\Facades\Debugbar')) {
-            \Barryvdh\Debugbar\Facades\Debugbar::disable();
+        $debugbarKey = 'debugbar';
+        if (app()->bound($debugbarKey)) {
+            app($debugbarKey)->disable();
         }
 
         $fileName = 'export_master_rpm_' . date('Ymd_His') . '.csv';
@@ -580,13 +598,14 @@ class DataManagementController extends Controller
     }
 
     // ==========================================
-    // EXPORT DATA SMARTKEY (OPTIMIZED FOR LARGE DATA)
+    // EXPORT DATA SMARTKEY
     // ==========================================
 
     public function exportSmartkey(): StreamedResponse
     {
-        if (class_exists('\Barryvdh\Debugbar\Facades\Debugbar')) {
-            \Barryvdh\Debugbar\Facades\Debugbar::disable();
+        $debugbarKey = 'debugbar';
+        if (app()->bound($debugbarKey)) {
+            app($debugbarKey)->disable();
         }
 
         $fileName = 'export_master_smartkey_' . date('Ymd_His') . '.csv';
@@ -653,10 +672,10 @@ class DataManagementController extends Controller
     {
         try {
             DB::table('rpm_masters')->truncate();
-            return back()->with('success', 'Tabel Master RPM berhasil dikosongkan!');
+            return redirect()->back()->with('success', 'Tabel Master RPM berhasil dikosongkan!');
         } catch (\Exception $e) {
             Log::error("Reset RPM Error: " . $e->getMessage());
-            return back()->with('error', 'Gagal mengosongkan tabel RPM: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Gagal mengosongkan tabel RPM: ' . $e->getMessage());
         }
     }
 
@@ -664,10 +683,10 @@ class DataManagementController extends Controller
     {
         try {
             DB::table('smartkey_masters')->truncate();
-            return back()->with('success', 'Tabel Master Smart Key berhasil dikosongkan!');
+            return redirect()->back()->with('success', 'Tabel Master Smart Key berhasil dikosongkan!');
         } catch (\Exception $e) {
             Log::error("Reset Smartkey Error: " . $e->getMessage());
-            return back()->with('error', 'Gagal mengosongkan tabel Smart Key: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Gagal mengosongkan tabel Smart Key: ' . $e->getMessage());
         }
     }
 }

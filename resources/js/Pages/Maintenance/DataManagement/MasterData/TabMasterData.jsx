@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Activity, KeyRound, ChevronLeft, ChevronRight } from 'lucide-react';
-import { router, usePage } from '@inertiajs/react'; // 👈 Tambah usePage
+import { Activity, KeyRound, Radio, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { router, usePage } from '@inertiajs/react';
 
 // Shadcn UI
 import { Button } from "@/components/ui/button";
@@ -21,10 +21,11 @@ const safeRoute = (name, params) => {
     return '#';
 };
 
-const getItemId = (item) => item?.id || item?.rpm_id || item?.serial_number;
+// MENDUKUNG TICKET_NUMBER DARI RPM (TIARA)
+const getItemId = (item) => item?.id || item?.ticket_number || item?.rpm_id || item?.tiara_id || item?.serial_number;
 
-export default function TabMasterData({ rpmMasters, smartkeyMasters, filters }) {
-    // 🔒 DETEKSI ROLE USER DARI INERTIA AUTH
+export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMasters, filters }) {
+    // DETEKSI ROLE USER DARI INERTIA AUTH
     const { auth } = usePage().props;
     const userRole = auth?.user?.role || 'view';
     const isAdmin = userRole === 'admin';
@@ -32,6 +33,21 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, filters }) 
     const confirm = useConfirm();
     const [subTab, setSubTab] = useState(filters?.tab || 'rpm');
     
+    // State Dropdown Master RPM
+    const [isRpmDropdownOpen, setIsRpmDropdownOpen] = useState(false);
+    const rpmDropdownRef = useRef(null);
+
+    // Close Dropdown saat klik di luar area
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (rpmDropdownRef.current && !rpmDropdownRef.current.contains(event.target)) {
+                setIsRpmDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
     // State Filter & Pagination
     const [searchTerm, setSearchTerm] = useState(filters?.search || '');
     const [sortOrder, setSortOrder] = useState(filters?.order || 'asc');
@@ -42,7 +58,12 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, filters }) 
     // State Row Checkboxes
     const [selectedIds, setSelectedIds] = useState([]);
 
-    const currentPagination = subTab === 'rpm' ? rpmMasters : smartkeyMasters;
+    const currentPagination = subTab === 'rpm' 
+        ? rpmMasters 
+        : subTab === 'smartkey' 
+        ? smartkeyMasters 
+        : tiaraMasters;
+
     const dataList = currentPagination?.data || [];
 
     // --- FITUR DEBOUNCE PENCARIAN ---
@@ -156,7 +177,9 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, filters }) 
     const handleExportData = () => {
         const routeName = subTab === 'rpm' 
             ? 'maintenance.data-management.export-rpm' 
-            : 'maintenance.data-management.export-smartkey';
+            : subTab === 'smartkey'
+            ? 'maintenance.data-management.export-smartkey'
+            : 'maintenance.data-management.export-tiara';
         
         const exportUrl = safeRoute(routeName);
         if (exportUrl !== '#') {
@@ -164,12 +187,18 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, filters }) 
         }
     };
 
+    const getTabDisplayName = () => {
+        if (subTab === 'rpm') return 'RPM (ANT)';
+        if (subTab === 'tiara') return 'RPM (TIARA)';
+        return 'SMART KEY';
+    };
+
     // --- HANDLE HAPUS DATA TERPILIH (HANYA ADMIN) ---
     const handleDeleteSelected = () => {
         if (!isAdmin || selectedIds.length === 0) return;
 
         confirm({
-            title: `Hapus Data Master ${subTab.toUpperCase()}`,
+            title: `Hapus Data Master ${getTabDisplayName()}`,
             message: `Apakah Anda yakin ingin MENGHAPUS ${selectedIds.length} data terpilih? Data yang dihapus tidak dapat dikembalikan.`,
             variant: 'danger',
             confirmText: 'Ya, Hapus Data',
@@ -177,7 +206,9 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, filters }) 
             onConfirm: () => {
                 const routeName = subTab === 'rpm' 
                     ? 'maintenance.data-management.destroy-rpm' 
-                    : 'maintenance.data-management.destroy-smartkey';
+                    : subTab === 'smartkey'
+                    ? 'maintenance.data-management.destroy-smartkey'
+                    : 'maintenance.data-management.destroy-tiara';
 
                 router.delete(safeRoute(routeName), {
                     data: { ids: selectedIds },
@@ -195,15 +226,17 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, filters }) 
         if (!isAdmin) return;
 
         confirm({
-            title: `Kosongkan Master Data ${subTab.toUpperCase()}`,
-            message: `Apakah Anda yakin ingin MENGOSONGKAN SELURUH data Master ${subTab.toUpperCase()}? Tindakan ini akan menghapus semua data di tabel ini.`,
+            title: `Kosongkan Master Data ${getTabDisplayName()}`,
+            message: `Apakah Anda yakin ingin MENGOSONGKAN SELURUH data Master ${getTabDisplayName()}? Tindakan ini akan menghapus semua data di tabel ini.`,
             variant: 'danger',
             confirmText: 'Ya, Kosongkan',
             cancelText: 'Batal',
             onConfirm: () => {
                 const routeName = subTab === 'rpm' 
                     ? 'maintenance.data-management.reset-rpm' 
-                    : 'maintenance.data-management.reset-smartkey';
+                    : subTab === 'smartkey'
+                    ? 'maintenance.data-management.reset-smartkey'
+                    : 'maintenance.data-management.reset-tiara';
 
                 router.post(safeRoute(routeName), {}, {
                     preserveScroll: true,
@@ -218,7 +251,7 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, filters }) 
     return (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
             
-            {/* PERABOTAN TOOLBAR */}
+            {/* TOOLBAR */}
             <Toolbar
                 searchTerm={searchTerm}
                 onSearchChange={setSearchTerm}
@@ -226,34 +259,93 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, filters }) 
                 sortOrder={sortOrder}
                 onToggleSort={toggleSort}
                 selectedCount={selectedIds.length}
-                /* 🔒 Hanya lewatkan fungsi aksi hapus & reset jika user adalah Admin */
                 onDeleteSelected={isAdmin ? handleDeleteSelected : undefined}
                 onReset={isAdmin ? handleResetTable : undefined}
                 onExport={handleExportData}
                 isProcessing={isProcessing}
                 leftContent={
-                    <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl w-fit">
-                        <Button 
-                            type="button"
-                            variant={subTab === 'rpm' ? 'default' : 'ghost'}
-                            size="sm"
-                            disabled={isProcessing}
-                            onClick={() => handleSubTabSwitch('rpm')}
-                            className={`text-xs font-bold gap-2 transition-all ${
-                                subTab === 'rpm' 
-                                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm' 
-                                    : 'text-slate-600 dark:text-slate-400'
-                            }`}
-                        >
-                            <Activity className="w-3.5 h-3.5" /> 
-                            <span>Master RPM ({rpmMasters?.total || 0})</span>
-                        </Button>
+                    <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl w-fit items-center gap-1">
+                        
+                        {/* Dropdown Master RPM */}
+                        <div className="relative" ref={rpmDropdownRef}>
+                            <Button 
+                                type="button"
+                                variant={(subTab === 'rpm' || subTab === 'tiara') ? 'default' : 'ghost'}
+                                size="sm"
+                                disabled={isProcessing}
+                                onClick={() => setIsRpmDropdownOpen(prev => !prev)}
+                                className={`text-xs font-bold gap-1.5 transition-all ${
+                                    subTab === 'rpm'
+                                        ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm' 
+                                        : subTab === 'tiara'
+                                        ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-sm'
+                                        : 'text-slate-600 dark:text-slate-400'
+                                }`}
+                            >
+                                <Activity className="w-3.5 h-3.5" /> 
+                                <span>
+                                    Master RPM {subTab === 'tiara' ? '(TIARA)' : '(ANT)'} ({subTab === 'tiara' ? (tiaraMasters?.total || 0) : (rpmMasters?.total || 0)})
+                                </span>
+                                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isRpmDropdownOpen ? 'rotate-180' : ''}`} />
+                            </Button>
+
+                            {isRpmDropdownOpen && (
+                                <div className="absolute left-0 mt-1.5 w-52 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg z-50 overflow-hidden py-1 animate-in fade-in zoom-in-95">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            handleSubTabSwitch('rpm');
+                                            setIsRpmDropdownOpen(false);
+                                        }}
+                                        className={`w-full text-left px-3.5 py-2 text-xs font-semibold flex items-center justify-between transition-colors ${
+                                            subTab === 'rpm'
+                                                ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 font-bold'
+                                                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                        }`}
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <Activity className="w-3.5 h-3.5 text-blue-500" />
+                                            RPM (ANT)
+                                        </span>
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 font-mono">
+                                            {rpmMasters?.total || 0}
+                                        </span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            handleSubTabSwitch('tiara');
+                                            setIsRpmDropdownOpen(false);
+                                        }}
+                                        className={`w-full text-left px-3.5 py-2 text-xs font-semibold flex items-center justify-between transition-colors ${
+                                            subTab === 'tiara'
+                                                ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 font-bold'
+                                                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                        }`}
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <Radio className="w-3.5 h-3.5 text-purple-500" />
+                                            RPM (TIARA)
+                                        </span>
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 font-mono">
+                                            {tiaraMasters?.total || 0}
+                                        </span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Master Smart Key */}
                         <Button 
                             type="button"
                             variant={subTab === 'smartkey' ? 'default' : 'ghost'}
                             size="sm"
                             disabled={isProcessing}
-                            onClick={() => handleSubTabSwitch('smartkey')}
+                            onClick={() => {
+                                handleSubTabSwitch('smartkey');
+                                setIsRpmDropdownOpen(false);
+                            }}
                             className={`text-xs font-bold gap-2 transition-all ${
                                 subTab === 'smartkey' 
                                     ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm' 

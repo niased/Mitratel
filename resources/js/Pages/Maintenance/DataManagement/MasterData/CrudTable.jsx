@@ -37,6 +37,19 @@ const TABLE_COLUMNS = {
         { key: 'posisi_unit', altKeys: ['posisi_unit'], label: 'Posisi Unit' },
         { key: 'status_aktifitas', altKeys: ['status_aktifitas', 'status_aktivitas'], label: 'Status Aktifitas' },
         { key: 'long_lat', altKeys: ['long_lat', 'longlat', 'coordinate'], label: 'Long Lat' },
+    ],
+    // 9 KOLOM INTI TIARA (SUPER RINGKAS & FOKUS DASHBOARD)
+    tiara: [
+        { key: 'ticket_number', altKeys: ['ticket_number', 'tiara_id', 'id_tiara'], label: 'No. Tiket TIARA' },
+        { key: 'siteoperator_code', altKeys: ['siteoperator_code', 'site_id', 'siteid'], label: 'Site ID' },
+        { key: 'siteoperator_name', altKeys: ['siteoperator_name', 'site_name'], label: 'Nama Site' },
+        { key: 'sitearea_reg', altKeys: ['sitearea_reg', 'regional', 'region'], label: 'Regional' },
+        { key: 'sitearea_to', altKeys: ['sitearea_to', 'to_area', 'area'], label: 'TO / Area' },
+        { key: 'company_name', altKeys: ['company_name', 'mitra', 'vendor'], label: 'Mitra / Vendor' },
+        { key: 'maintenancetype_name', altKeys: ['maintenancetype_name', 'tipe_maintenance'], label: 'Jenis Pekerjaan' },
+        { key: 'maintenance_date', altKeys: ['maintenance_date', 'tanggal_maintenance'], label: 'Tgl Maintenance', type: 'date' },
+        { key: 'ticket_statusname', altKeys: ['ticket_statusname', 'status_asli'], label: 'Status TIARA' },
+        { key: 'dashboard_status', altKeys: ['dashboard_status', 'status_approve', 'status'], label: 'Status Dashboard' },
     ]
 };
 
@@ -52,6 +65,12 @@ export default function CrudTable({
     const userRole = auth?.user?.role || 'view';
     const canWrite = userRole === 'admin' || userRole === 'staff';
 
+    const getTabTitle = () => {
+        if (subTab === 'rpm') return 'RPM (ANT)';
+        if (subTab === 'tiara') return 'RPM (TIARA)';
+        return 'SMART KEY';
+    };
+
     const getFieldValue = useCallback((item, colDef) => {
         if (!item || !colDef) return '';
         if (colDef.altKeys && Array.isArray(colDef.altKeys)) {
@@ -65,7 +84,7 @@ export default function CrudTable({
     }, []);
 
     const getItemId = useCallback((item) => {
-        return item?.id || item?.rpm_id || item?.serial_number || item?.lock_id || item?.infrako;
+        return item?.id || item?.ticket_number || item?.rpm_id || item?.serial_number || item?.lock_id || item?.infrako;
     }, []);
 
     const formattedColumns = useMemo(() => {
@@ -77,16 +96,22 @@ export default function CrudTable({
                 switch (col.key) {
                     case 'rpm_id':
                         return <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{value || '-'}</span>;
+                    case 'ticket_number':
+                        return <span className="font-mono font-bold text-purple-600 dark:text-purple-400">{value || '-'}</span>;
                     case 'site_id':
+                    case 'siteoperator_code':
                         return <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{value || '-'}</span>;
                     case 'rtp':
-                        return <span className="uppercase">{value || '-'}</span>;
+                    case 'sitearea_reg':
+                        return <span className="uppercase font-semibold">{value || '-'}</span>;
                     case 'tanggal_submit':
                     case 'tanggal_approve':
+                    case 'maintenance_date':
                         return <span className="text-xs text-slate-500 dark:text-slate-400">{value || '-'}</span>;
                     case 'approve':
+                    case 'dashboard_status': {
                         const approveVal = String(value || '').toLowerCase();
-                        const isBelumApproved = approveVal.includes('belum');
+                        const isBelumApproved = approveVal.includes('belum') || approveVal.includes('pending') || approveVal.includes('returned');
                         const isApproved = approveVal.includes('approve') || approveVal.includes('setuju') || approveVal.includes('sudah');
                         return (
                             <Badge variant="outline" className={`font-semibold ${
@@ -99,7 +124,12 @@ export default function CrudTable({
                                 {value || '-'}
                             </Badge>
                         );
+                    }
+                    case 'ticket_statusname':
+                        return <span className="font-bold text-xs text-amber-600 dark:text-amber-400">{value || '-'}</span>;
                     case 'infrako':
+                    case 'siteoperator_name':
+                    case 'site_name':
                         return <span className="font-semibold text-slate-700 dark:text-slate-200">{value || '-'}</span>;
                     case 'ksm':
                     case 'batch':
@@ -125,11 +155,6 @@ export default function CrudTable({
     const [addItems, setAddItems] = useState([]);
 
     const createEmptyRow = useCallback(() => {
-        if (subTab === 'rpm') {
-            return {
-                rpm_id: '', site_id: '', rtp: '', mitra: '', bulan: '', tahun: '', tanggal_submit: '', tanggal_approve: '', approve: ''
-            };
-        }
         const emptyObj = {};
         const rawCols = TABLE_COLUMNS[subTab] || TABLE_COLUMNS.rpm;
         rawCols.forEach(col => { emptyObj[col.key] = ''; });
@@ -146,37 +171,23 @@ export default function CrudTable({
             rawRows = rawRows.slice(0, MAX_ROWS_LIMIT);
         }
 
+        const rawCols = TABLE_COLUMNS[subTab] || TABLE_COLUMNS.rpm;
+
         const parsedItems = rawRows.map(rowStr => {
             const cells = rowStr.split('\t').map(c => c.trim().replace(/^"(.*)"$/, '$1'));
             const rowObj = createEmptyRow();
 
-            if (subTab === 'rpm') {
-                rowObj.rpm_id = cells[0] ?? '';
-                rowObj.site_id = cells[1] ?? '';
-                rowObj.siteid = cells[1] ?? '';
-                rowObj.rtp = cells[2] ?? '';
-                rowObj.mitra = cells[3] ?? '';
-                rowObj.bulan = cells[4] ?? '';
-                rowObj.tahun = cells[5] ?? '';
-                rowObj.tanggal_submit = cells[6] ?? '';
-                rowObj.tanggalsubn = cells[6] ?? '';
-                rowObj.tanggal_approve = cells[7] ?? '';
-                rowObj.tanggalappr = cells[7] ?? '';
-                rowObj.approve = cells[8] ?? '';
-            } else {
-                rowObj.infrako = cells[0] ?? '';
-                rowObj.ksm = cells[1] ?? '';
-                rowObj.batch = cells[2] ?? '';
-                rowObj.lock_id = cells[3] ?? '';
-                rowObj.serial_number = cells[4] ?? '';
-                rowObj.tower_id = cells[5] ?? '';
-                rowObj.site_name = cells[6] ?? '';
-                rowObj.kota_kab = cells[7] ?? '';
-                rowObj.status = cells[8] ?? '';
-                rowObj.posisi_unit = cells[9] ?? '';
-                rowObj.status_aktifitas = cells[10] ?? '';
-                rowObj.long_lat = cells[11] ?? '';
-            }
+            rawCols.forEach((col, idx) => {
+                if (cells[idx] !== undefined) {
+                    rowObj[col.key] = cells[idx];
+                    if (col.key === 'site_id' || col.key === 'siteoperator_code') {
+                        rowObj.siteid = cells[idx];
+                        rowObj.site_id = cells[idx];
+                        rowObj.siteoperator_code = cells[idx];
+                    }
+                }
+            });
+
             return rowObj;
         });
 
@@ -221,8 +232,6 @@ export default function CrudTable({
         rawCols.forEach(col => {
             formattedItem[col.key] = getFieldValue(item, col);
         });
-        formattedItem.bulan = item.bulan || '';
-        formattedItem.tahun = item.tahun || '';
         setEditData(formattedItem);
         setIsModalOpen(true);
     }, [canWrite, subTab, getFieldValue]);
@@ -255,9 +264,6 @@ export default function CrudTable({
         setAddItems(prev => {
             const updated = [...prev];
             updated[index] = { ...updated[index], [field]: value };
-            if (field === 'tanggal_submit') updated[index].tanggalsubn = value;
-            if (field === 'tanggal_approve') updated[index].tanggalappr = value;
-            if (field === 'site_id') updated[index].siteid = value;
             return updated;
         });
     }, []);
@@ -269,7 +275,9 @@ export default function CrudTable({
 
         const routeName = subTab === 'rpm' 
             ? (isEditMode ? 'maintenance.data-management.update-rpm' : 'maintenance.data-management.store-rpm')
-            : (isEditMode ? 'maintenance.data-management.update-smartkey' : 'maintenance.data-management.store-smartkey');
+            : subTab === 'smartkey'
+            ? (isEditMode ? 'maintenance.data-management.update-smartkey' : 'maintenance.data-management.store-smartkey')
+            : (isEditMode ? 'maintenance.data-management.update-tiara' : 'maintenance.data-management.store-tiara');
 
         const method = isEditMode ? 'put' : 'post';
         
@@ -297,7 +305,7 @@ export default function CrudTable({
         <div className="space-y-3">
             <div className="px-5 py-2.5 bg-slate-50/50 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Kelola Data Master {subTab.toUpperCase()}
+                    Kelola Data Master {getTabTitle()}
                 </span>
                 
                 {canWrite && (
@@ -322,14 +330,14 @@ export default function CrudTable({
                 onEditRow={canWrite ? handleOpenEditModal : undefined}
                 getItemId={getItemId}
                 getRowNumber={getRowNumber}
-                emptyMessage={`Belum ada data Master ${subTab.toUpperCase()}.`}
+                emptyMessage={`Belum ada data Master ${getTabTitle()}.`}
             />
 
             {canWrite && (
                 <Modal
                     isOpen={isModalOpen}
                     onClose={handleCloseModal}
-                    title={`${isEditMode ? 'Edit Data' : 'Tambah Data Master'} (${subTab.toUpperCase()})`}
+                    title={`${isEditMode ? 'Edit Data' : 'Tambah Data Master'} (${getTabTitle()})`}
                     onSubmit={handleSubmitForm}
                     submitLabel={isEditMode ? 'Simpan Perubahan' : 'Simpan Semua Data'}
                     isProcessing={isProcessing}
@@ -364,7 +372,10 @@ export default function CrudTable({
                         <Alert className="shrink-0 mb-3 bg-blue-50/60 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900/40 text-blue-700 dark:text-blue-300 p-2.5 flex items-start gap-2">
                             <AlertCircle className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                             <AlertDescription className="text-[11px] leading-relaxed">
-                                <strong>Smart Paste (Maks {MAX_ROWS_LIMIT} Baris):</strong> Tekan <strong>Ctrl + V</strong> untuk menempelkan sel dari Excel. Pastikan urutan 12 kolom SmartKey: <em>Infrako, KSM, Batch, Lock ID, Serial Number, Tower ID, Site Name, Kota/Kab, Status, Posisi Unit, Status Aktifitas, Long Lat</em>.
+                                <strong>Smart Paste (Maks {MAX_ROWS_LIMIT} Baris):</strong> Tekan <strong>Ctrl + V</strong> untuk menempelkan sel dari Excel. 
+                                {subTab === 'rpm' && ' Urutan 9 kolom RPM (ANT): ID RPM, Site ID, RTP, Mitra, Bulan, Tahun, Tgl Submit, Tgl Approve, Status.'}
+                                {subTab === 'smartkey' && ' Urutan 12 kolom SmartKey: Infrako, KSM, Batch, Lock ID, Serial Number, Tower ID, Site Name, Kota/Kab, Status, Posisi Unit, Status Aktifitas, Long Lat.'}
+                                {subTab === 'tiara' && ' Urutan 10 kolom RPM (TIARA): No. Tiket TIARA, Site ID, Nama Site, Regional, TO/Area, Mitra/Vendor, Jenis Pekerjaan, Tgl Maintenance, Status TIARA, Status Dashboard.'}
                             </AlertDescription>
                         </Alert>
                     )}
@@ -372,59 +383,28 @@ export default function CrudTable({
                     <div className="space-y-4">
                         {isEditMode ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-1">
-                                {subTab === 'rpm' ? (
-                                    <>
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">ID RPM</Label>
-                                            <Input disabled={isProcessing} value={editData.rpm_id || ''} onChange={(e) => setEditData({ ...editData, rpm_id: e.target.value })} placeholder="ID RPM" />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Site ID</Label>
-                                            <Input disabled={isProcessing} value={editData.site_id || editData.siteid || ''} onChange={(e) => setEditData({ ...editData, site_id: e.target.value, siteid: e.target.value })} placeholder="Site ID" />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">RTP</Label>
-                                            <Input disabled={isProcessing} value={editData.rtp || ''} onChange={(e) => setEditData({ ...editData, rtp: e.target.value })} placeholder="RTP" />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Mitra</Label>
-                                            <Input disabled={isProcessing} value={editData.mitra || ''} onChange={(e) => setEditData({ ...editData, mitra: e.target.value })} placeholder="Mitra" />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Bulan</Label>
-                                            <Input disabled={isProcessing} value={editData.bulan || ''} onChange={(e) => setEditData({ ...editData, bulan: e.target.value })} placeholder="Bulan" />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Tahun</Label>
-                                            <Input disabled={isProcessing} value={editData.tahun || ''} onChange={(e) => setEditData({ ...editData, tahun: e.target.value })} placeholder="Tahun" />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Tanggal Submit</Label>
-                                            <Input type="date" disabled={isProcessing} value={editData.tanggal_submit || editData.tanggalsubn || ''} onChange={(e) => setEditData({ ...editData, tanggal_submit: e.target.value, tanggalsubn: e.target.value })} />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Tanggal Approve</Label>
-                                            <Input type="date" disabled={isProcessing} value={editData.tanggal_approve || editData.tanggalappr || ''} onChange={(e) => setEditData({ ...editData, tanggal_approve: e.target.value, tanggalappr: e.target.value })} />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Approve Status</Label>
-                                            <Input disabled={isProcessing} value={editData.approve || ''} onChange={(e) => setEditData({ ...editData, approve: e.target.value })} placeholder="Status Approve" />
-                                        </div>
-                                    </>
-                                ) : (
-                                    (TABLE_COLUMNS[subTab] || TABLE_COLUMNS.smartkey).map((col) => (
-                                        <div key={col.key} className="space-y-1.5">
-                                            <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">{col.label}</Label>
-                                            <Input 
-                                                type={col.type || 'text'}
-                                                disabled={isProcessing}
-                                                value={editData[col.key] || ''} 
-                                                onChange={(e) => setEditData({ ...editData, [col.key]: e.target.value })} 
-                                                placeholder={`Masukkan ${col.label}`}
-                                            />
-                                        </div>
-                                    ))
-                                )}
+                                {(TABLE_COLUMNS[subTab] || TABLE_COLUMNS.rpm).map((col) => (
+                                    <div key={col.key} className="space-y-1.5">
+                                        <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">{col.label}</Label>
+                                        <Input 
+                                            type={col.type || 'text'}
+                                            disabled={isProcessing}
+                                            value={editData[col.key] || ''} 
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setEditData(prev => {
+                                                    const updated = { ...prev, [col.key]: val };
+                                                    if (col.key === 'site_id' || col.key === 'siteoperator_code') {
+                                                        updated.siteid = val;
+                                                        updated.site_id = val;
+                                                    }
+                                                    return updated;
+                                                });
+                                            }} 
+                                            placeholder={`Masukkan ${col.label}`}
+                                        />
+                                    </div>
+                                ))}
                             </div>
                         ) : (
                             <div className="space-y-4">
@@ -449,62 +429,22 @@ export default function CrudTable({
                                                 </Button>
                                             )}
                                         </div>
-                                        {subTab === 'rpm' ? (
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                                <div className="space-y-1">
-                                                    <Label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">ID RPM</Label>
-                                                    <Input disabled={isProcessing} value={item.rpm_id || ''} onChange={(e) => handleAddItemChange(itemIdx, 'rpm_id', e.target.value)} placeholder="ID RPM" className="h-8 text-xs bg-white dark:bg-slate-900" />
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {(TABLE_COLUMNS[subTab] || TABLE_COLUMNS.rpm).map((col) => (
+                                                <div key={col.key} className="space-y-1">
+                                                    <Label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">{col.label}</Label>
+                                                    <Input 
+                                                        type={col.type || 'text'}
+                                                        disabled={isProcessing}
+                                                        value={item[col.key] || ''} 
+                                                        onChange={(e) => handleAddItemChange(itemIdx, col.key, e.target.value)} 
+                                                        placeholder={col.label}
+                                                        className="h-8 text-xs bg-white dark:bg-slate-900"
+                                                    />
                                                 </div>
-                                                <div className="space-y-1">
-                                                    <Label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Site ID</Label>
-                                                    <Input disabled={isProcessing} value={item.site_id || item.siteid || ''} onChange={(e) => handleAddItemChange(itemIdx, 'site_id', e.target.value)} placeholder="Site ID" className="h-8 text-xs bg-white dark:bg-slate-900" />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">RTP</Label>
-                                                    <Input disabled={isProcessing} value={item.rtp || ''} onChange={(e) => handleAddItemChange(itemIdx, 'rtp', e.target.value)} placeholder="RTP" className="h-8 text-xs bg-white dark:bg-slate-900" />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Mitra</Label>
-                                                    <Input disabled={isProcessing} value={item.mitra || ''} onChange={(e) => handleAddItemChange(itemIdx, 'mitra', e.target.value)} placeholder="Mitra" className="h-8 text-xs bg-white dark:bg-slate-900" />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Bulan</Label>
-                                                    <Input disabled={isProcessing} value={item.bulan || ''} onChange={(e) => handleAddItemChange(itemIdx, 'bulan', e.target.value)} placeholder="Bulan" className="h-8 text-xs bg-white dark:bg-slate-900" />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Tahun</Label>
-                                                    <Input disabled={isProcessing} value={item.tahun || ''} onChange={(e) => handleAddItemChange(itemIdx, 'tahun', e.target.value)} placeholder="Tahun" className="h-8 text-xs bg-white dark:bg-slate-900" />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Tanggal Submit</Label>
-                                                    <Input type="date" disabled={isProcessing} value={item.tanggal_submit || item.tanggalsubn || ''} onChange={(e) => handleAddItemChange(itemIdx, 'tanggal_submit', e.target.value)} className="h-8 text-xs bg-white dark:bg-slate-900" />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Tanggal Approve</Label>
-                                                    <Input type="date" disabled={isProcessing} value={item.tanggal_approve || item.tanggalappr || ''} onChange={(e) => handleAddItemChange(itemIdx, 'tanggal_approve', e.target.value)} className="h-8 text-xs bg-white dark:bg-slate-900" />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Status Approve</Label>
-                                                    <Input disabled={isProcessing} value={item.approve || ''} onChange={(e) => handleAddItemChange(itemIdx, 'approve', e.target.value)} placeholder="Status Approve" className="h-8 text-xs bg-white dark:bg-slate-900" />
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                                {(TABLE_COLUMNS[subTab] || TABLE_COLUMNS.smartkey).map((col) => (
-                                                    <div key={col.key} className="space-y-1">
-                                                        <Label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">{col.label}</Label>
-                                                        <Input 
-                                                            type={col.type || 'text'}
-                                                            disabled={isProcessing}
-                                                            value={item[col.key] || ''} 
-                                                            onChange={(e) => handleAddItemChange(itemIdx, col.key, e.target.value)} 
-                                                            placeholder={col.label}
-                                                            className="h-8 text-xs bg-white dark:bg-slate-900"
-                                                        />
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
+                                            ))}
+                                        </div>
                                     </div>
                                 ))}
                                 <div className="flex items-center gap-2 pt-1">

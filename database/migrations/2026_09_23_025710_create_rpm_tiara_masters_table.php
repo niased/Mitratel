@@ -11,35 +11,25 @@ return new class extends Migration
         Schema::create('rpm_tiara_masters', function (Blueprint $table) {
             $table->id();
 
-            // Identitas Utama Tiket (20 Kolom TIARA)
-            $table->string('ticket_number')->unique();          // ID Tiket Utama (33.283 unik)
-            $table->string('ticket_refnumber')->nullable();
+            // Identitas Tiket Utama
+            $table->string('ticket_number')->unique();          // No. Tiket TIARA
 
-            // Data Site & Hierarki Wilayah
-            $table->string('siteoperator_code')->nullable()->index(); // Kode Site
-            $table->string('siteoperator_name')->nullable();           // Nama Site
-            $table->string('sitearea_reg')->nullable();                // Regional
-            $table->string('sitearea_nop')->nullable();                // NOP
-            $table->string('sitearea_to')->nullable()->index();        // TO / Area
+            // Data Site & Wilayah
+            $table->string('siteoperator_code')->index();        // Site ID
+            $table->string('siteoperator_name')->nullable();    // Nama Site
+            $table->string('sitearea_reg')->nullable();         // Regional
+            $table->string('sitearea_to')->nullable()->index(); // TO / Area
 
-            // Mitra & Jenis Maintenance
-            $table->string('company_name')->nullable();                // Nama Vendor / Mitra
-            $table->string('maintenancetype_name')->nullable();        // Jenis Pekerjaan
+            // Mitra & Pekerjaan
+            $table->string('company_name')->nullable();         // Mitra / Vendor
+            $table->string('maintenancetype_name')->nullable(); // Jenis Pekerjaan
 
-            // Tanggal & Waktu
-            $table->date('maintenance_date')->nullable();
-            $table->string('month', 50)->nullable()->index();          // Bulan
-            $table->string('year', 10)->nullable()->index();           // Tahun
-            $table->string('submit_time')->nullable();
-            $table->string('approve_time')->nullable();
+            // Tanggal (Bulan & Tahun di-extract otomatis dari tanggal ini saat query)
+            $table->date('maintenance_date')->nullable();       // Tgl Maintenance
 
-            // Status Tiket & Mapping Dashboard
-            $table->string('ticket_statusname')->nullable();           // Status Asli TIARA (Closed, New, Waiting NOP, dll.)
-            $table->string('dashboard_status')->nullable()->index();   // Result Mapping: APPROVED, PENDING, REJECTED, RETURNED
-
-            // Lampiran / Detail Ekstra
-            $table->text('link_evidence')->nullable();
-            $table->string('kwh_meter')->nullable();
+            // Status
+            $table->string('ticket_statusname')->nullable();    // Status TIARA
+            $table->string('dashboard_status')->nullable()->index(); // Status Dashboard (APPROVED/PENDING/REJECTED)
 
             $table->timestamps();
         });

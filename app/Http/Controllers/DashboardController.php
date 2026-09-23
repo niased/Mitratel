@@ -7,6 +7,7 @@ use App\Models\SmartkeyMaster;
 use App\Models\CombatMaster;
 use App\Models\CombatTrip;
 use App\Models\User;
+use App\Http\Controllers\DashboardTiaraController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
@@ -155,8 +156,12 @@ class DashboardController extends Controller
     // ==========================================
     // 🟠 2. HALAMAN MAINTENANCE DASHBOARD (/maintenance/dashboard)
     // ==========================================
-    public function maintenance(Request $request): Response
+    public function maintenance(Request $request, DashboardTiaraController $tiaraController): Response
     {
+        // --- 1. AMBIL SUMMARY DATA RPM TIARA DARI CONTROLLER TERPISAH ---
+        $tiaraData = $tiaraController->getSummaryData($request);
+
+        // --- 2. LOGIKA RPM (ANT) ---
         $rpmTahun = $this->parseFilterValue($request->input('tahun'), 'ALL');
         $rpmRtp   = $this->parseFilterValue($request->input('rtp'), 'ALL');
 
@@ -344,7 +349,7 @@ class DashboardController extends Controller
                 ];
             });
 
-        // SMARTKEY LOGIC
+        // --- 3. SMARTKEY LOGIC ---
         $skInfrako = $this->parseArrayFilter($request->input('infrako'));
         $skStatus  = $this->parseArrayFilter($request->input('status'));
         $skSn      = $this->parseArrayFilter($request->input('sn'));
@@ -457,6 +462,7 @@ class DashboardController extends Controller
                 'monthlyPivot'    => $rpmMonthlyPivot,
                 'rtpPivot'        => $rpmRtpPivot,
             ],
+            'tiaraSummary'    => $tiaraData['summary'] ?? [],
             'smartkeySummary' => [
                 'summary'    => $skSummary,
                 'chart'      => $skChart,
@@ -465,6 +471,7 @@ class DashboardController extends Controller
             ],
             'filterOptions' => [
                 'rpm'      => $rpmFilterOptions,
+                'tiara'    => $tiaraData['options'] ?? ['regional' => [], 'vendor' => []],
                 'smartkey' => $skFilterOptions,
             ],
             'filters' => [
@@ -472,6 +479,7 @@ class DashboardController extends Controller
                     'tahun' => $rpmTahun,
                     'rtp'   => $rpmRtp,
                 ],
+                'tiara'    => $tiaraData['filters'] ?? ['regional' => 'ALL', 'vendor' => 'ALL'],
                 'smartkey' => [
                     'infrako' => $skInfrako,
                     'status'  => $skStatus,
