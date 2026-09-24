@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { usePage } from '@inertiajs/react';
-import { Lock, Activity, Radio, ChevronDown } from 'lucide-react';
+import Icon from '@/Components/Icon';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 
@@ -16,7 +16,6 @@ import useTabTarikanRpmControl from './TabTarikanRpmControl';
 import useTabTarikanTiaraControl from './TabTarikanTiaraControl';
 import useTabTarikanSmartkeyControl from './TabTarikanSmartkeyControl';
 
-// IMPORT KOMPONEN TOAST DARI NOTIFIKASI
 import { Toast } from '@/components/ui/Notifikasi';
 
 export default function TabDataTarikan() {
@@ -24,23 +23,21 @@ export default function TabDataTarikan() {
     const userRole = auth?.user?.role || 'view';
     const canWrite = userRole === 'admin' || userRole === 'staff';
 
-    // State Toggle Engine RPM ('ant' atau 'tiara')
     const [engineRpmType, setEngineRpmType] = useState('ant');
     const [isRpmDropdownOpen, setIsRpmDropdownOpen] = useState(false);
     const rpmDropdownRef = useRef(null);
 
-    // Close Dropdown saat klik di luar
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (rpmDropdownRef.current && !rpmDropdownRef.current.contains(event.target)) {
                 setIsRpmDropdownOpen(false);
             }
         };
+
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Control Hooks untuk Masing-masing Engine
     const rpmControl = useTabTarikanRpmControl(canWrite);
     const tiaraControl = useTabTarikanTiaraControl(canWrite);
     const smartkeyControl = useTabTarikanSmartkeyControl(canWrite);
@@ -49,48 +46,52 @@ export default function TabDataTarikan() {
         <div className="space-y-6">
             {!canWrite && (
                 <Alert className="bg-amber-500/10 border-amber-500/25 text-amber-600 dark:text-amber-400 py-3 rounded-xl shadow-xs">
-                    <Lock className="w-4 h-4 shrink-0 text-amber-500" />
+                    <Icon name="lock" size={16} fill="#F59E0B" />
                     <AlertDescription className="text-xs font-medium ml-2">
                         Akun Anda memiliki izin akses <strong>Viewer</strong>. Fitur eksekusi Engine Auto-Report hanya dapat dijalankan oleh <strong>Administrator</strong> atau <strong>Staff Operasional</strong>.
                     </AlertDescription>
                 </Alert>
             )}
 
-            {/* Layout Kartu Engine Form */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                
-                {/* KARTU KIRI: ENGINE RPM (ANT / TIARA WITH DROPDOWN) */}
                 <div className="space-y-3">
                     <div className="flex items-center justify-between px-1">
                         <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                             Engine Log RPM
                         </span>
 
-                        {/* Selector Dropdown RPM */}
                         <div className="relative" ref={rpmDropdownRef}>
                             <Button
                                 type="button"
-                                variant="outline"
+                                variant="ghost"
                                 size="sm"
                                 onClick={() => setIsRpmDropdownOpen(prev => !prev)}
-                                className={`h-8 text-xs font-bold gap-2 border-slate-200 dark:border-slate-800 transition-all ${
-                                    engineRpmType === 'ant' 
-                                        ? 'text-blue-600 dark:text-blue-400 bg-blue-50/60 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800/60' 
-                                        : 'text-purple-600 dark:text-purple-400 bg-purple-50/60 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800/60'
+                                className={`h-8 px-1 text-xs font-bold gap-2 border-0 shadow-none bg-transparent hover:bg-transparent dark:bg-transparent dark:hover:bg-transparent transition-all ${
+                                    engineRpmType === 'ant'
+                                        ? 'text-blue-600 dark:text-blue-400'
+                                        : 'text-purple-600 dark:text-purple-400'
                                 }`}
                             >
                                 {engineRpmType === 'ant' ? (
                                     <>
-                                        <Activity className="w-3.5 h-3.5 text-blue-500" />
+                                        <Icon name="chart" size={14} fill="#3B82F6" />
                                         <span>RPM (ANT)</span>
                                     </>
                                 ) : (
                                     <>
-                                        <Radio className="w-3.5 h-3.5 text-purple-500" />
+                                        <Icon name="chart" size={14} fill="#A855F7" />
                                         <span>RPM (TIARA)</span>
                                     </>
                                 )}
-                                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isRpmDropdownOpen ? 'rotate-180' : ''}`} />
+
+                                <Icon
+                                    name="chevronDown"
+                                    size={14}
+                                    fill={engineRpmType === 'ant' ? '#3B82F6' : '#A855F7'}
+                                    className={`transition-transform duration-200 ${
+                                        isRpmDropdownOpen ? 'rotate-180' : ''
+                                    }`}
+                                />
                             </Button>
 
                             {isRpmDropdownOpen && (
@@ -108,7 +109,7 @@ export default function TabDataTarikan() {
                                         }`}
                                     >
                                         <span className="flex items-center gap-2">
-                                            <Activity className="w-3.5 h-3.5 text-blue-500" />
+                                            <Icon name="chart" size={14} fill="#3B82F6" />
                                             RPM (ANT)
                                         </span>
                                     </button>
@@ -126,7 +127,7 @@ export default function TabDataTarikan() {
                                         }`}
                                     >
                                         <span className="flex items-center gap-2">
-                                            <Radio className="w-3.5 h-3.5 text-purple-500" />
+                                            <Icon name="chart" size={14} fill="#A855F7" />
                                             RPM (TIARA)
                                         </span>
                                     </button>
@@ -135,26 +136,33 @@ export default function TabDataTarikan() {
                         </div>
                     </div>
 
-                    {/* Render Form Engine Sesuai Dropdown */}
                     {engineRpmType === 'ant' ? (
-                        <TabTarikanRpm canWrite={canWrite} control={rpmControl} />
+                        <TabTarikanRpm
+                            canWrite={canWrite}
+                            control={rpmControl}
+                        />
                     ) : (
-                        <TabTarikanTiara canWrite={canWrite} control={tiaraControl} />
+                        <TabTarikanTiara
+                            canWrite={canWrite}
+                            control={tiaraControl}
+                        />
                     )}
                 </div>
 
-                {/* KARTU KANAN: ENGINE SMARTKEY */}
                 <div className="space-y-3">
                     <div className="flex items-center justify-between px-1 h-8">
                         <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                             Engine IoT SmartKey
                         </span>
                     </div>
-                    <TabTarikanSmartkey canWrite={canWrite} control={smartkeyControl} />
+
+                    <TabTarikanSmartkey
+                        canWrite={canWrite}
+                        control={smartkeyControl}
+                    />
                 </div>
             </div>
 
-            {/* TABEL PRATINJAU ENGINE RPM (ANT) */}
             {engineRpmType === 'ant' && !rpmControl.processingRpm && (
                 <PreviewTableRpm
                     previewData={rpmControl.previewData}
@@ -164,7 +172,6 @@ export default function TabDataTarikan() {
                 />
             )}
 
-            {/* TABEL PRATINJAU ENGINE RPM (TIARA) */}
             {engineRpmType === 'tiara' && !tiaraControl.processingTiara && (
                 <PreviewTableTiara
                     previewData={tiaraControl.previewData}
@@ -175,7 +182,6 @@ export default function TabDataTarikan() {
                 />
             )}
 
-            {/* TABEL PRATINJAU SMARTKEY */}
             {!smartkeyControl.processingSmartkey && (
                 <PreviewTableSmartkey
                     previewData={smartkeyControl.previewData}
@@ -185,7 +191,6 @@ export default function TabDataTarikan() {
                 />
             )}
 
-            {/* TOAST NOTIFICATION CONTAINER UNTUK ENGINE TIARA */}
             <Toast
                 isOpen={tiaraControl.toast.isOpen}
                 type={tiaraControl.toast.type}

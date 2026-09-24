@@ -8,6 +8,7 @@ use App\Models\CombatMaster;
 use App\Models\CombatTrip;
 use App\Models\User;
 use App\Http\Controllers\DashboardTiaraController;
+use App\Http\Controllers\DashboardCombinedController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
@@ -59,20 +60,17 @@ class DashboardController extends Controller
     // ==========================================
     public function index(Request $request): Response
     {
-        // 1A. COMBAT: MODE DASHBOARD (Menggunakan kolom status_combat)
         $totalCombat  = CombatMaster::query()->count('*');
         $rusakCombat  = CombatMaster::query()->whereRaw("(LOWER(TRIM(status_combat)) LIKE '%broken%' OR LOWER(TRIM(status_combat)) LIKE '%rusak%' OR status_combat LIKE '6.%')", [], 'and')->count('*');
         $onsiteCombat = CombatMaster::query()->whereRaw("(LOWER(TRIM(status_combat)) LIKE '%onsite%' OR status_combat LIKE '2.%')", [], 'and')->count('*');
         $readyCombat  = CombatMaster::query()->whereRaw("(LOWER(TRIM(status_combat)) LIKE '%ready%' OR status_combat LIKE '5.%')", [], 'and')->count('*');
 
-        // Fallback jika nilai status_combat di database kosong/belum terisi
         if ($readyCombat === 0 && $onsiteCombat === 0 && $rusakCombat === 0 && $totalCombat > 0) {
             $inTransitCount = CombatTrip::query()->where('status', '=', 'IN_TRANSIT')->count('*');
             $readyCombat    = max(0, $totalCombat - $inTransitCount);
             $onsiteCombat   = $inTransitCount;
         }
 
-        // 1B. COMBAT: MODE RUTE (Status Operasional Perjalanan dari tabel combat_trips)
         $tripInTransit = CombatTrip::query()->where('status', '=', 'IN_TRANSIT')->count('*');
         $tripAssigned  = CombatTrip::query()->where('status', '=', 'ASSIGNED')->count('*');
         $tripCompleted = CombatTrip::query()->where('status', '=', 'COMPLETED')->count('*');
@@ -93,7 +91,6 @@ class DashboardController extends Controller
             ],
         ];
 
-        // 2. MAINTENANCE (RPM & SMARTKEY)
         $statusCol    = "LOWER(TRIM(COALESCE(approve, '')))";
         $condApproved = "{$statusCol} IN ('ok', 'approved', 'approve')";
         $condReject   = "({$statusCol} IN ('reject', 'nok') OR {$statusCol} LIKE '%reject%')";
@@ -139,7 +136,6 @@ class DashboardController extends Controller
             ],
         ];
 
-        // 3. DAFTAR TIM & USER
         $teamMembers = User::query()
             ->select(['id', 'name', 'email', 'role', 'created_at'])
             ->orderBy('name', 'asc')
@@ -156,12 +152,15 @@ class DashboardController extends Controller
     // ==========================================
     // 🟠 2. HALAMAN MAINTENANCE DASHBOARD (/maintenance/dashboard)
     // ==========================================
-    public function maintenance(Request $request, DashboardTiaraController $tiaraController): Response
-    {
-        // --- 1. AMBIL SUMMARY DATA RPM TIARA DARI CONTROLLER TERPISAH ---
+    public function maintenance(
+        Request $request, 
+        DashboardTiaraController $tiaraController,
+        DashboardCombinedController $combinedController
+    ): Response {
+        // 1. DATA SUMMARY RPM TIARA (DARI CONTROLLER TERPISAH)
         $tiaraData = $tiaraController->getSummaryData($request);
 
-        // --- 2. LOGIKA RPM (ANT) ---
+        // 2. DATA SUMMARY RPM ANT
         $rpmTahun = $this->parseFilterValue($request->input('tahun'), 'ALL');
         $rpmRtp   = $this->parseFilterValue($request->input('rtp'), 'ALL');
 
@@ -349,7 +348,23 @@ class DashboardController extends Controller
                 ];
             });
 
-        // --- 3. SMARTKEY LOGIC ---
+        $antSummary = [
+            'totalSite'     => (int) ($rpmKpi->total_dokumen ?? 0),
+            'totalApproved' => (int) ($rpmKpi->total_approved ?? 0),
+            'totalPending'  => (int) ($rpmKpi->total_pending ?? 0),
+            'totalReject'   => (int) ($rpmKpi->total_reject ?? 0),
+            'totalReturn'   => (int) ($rpmKpi->total_return ?? 0),
+            'chartData'     => $rpmChartData,
+            'monthlyPivot'  => $rpmMonthlyPivot,
+            'rtpPivot'      => $rpmRtpPivot->toArray(),
+        ];
+
+        // 3. DATA SUMMARY GABUNGAN (PROSES DEDUPLIKASI LINTAS TABEL DARI DashboardCombinedController)
+        $combinedData     = $combinedController->getSummaryData($request);
+        $rpmAllSummary    = $combinedData['summary'] ?? [];
+        $allFilterOptions = $combinedData['options'] ?? ['tahun' => [], 'rtp' => []];
+
+        // 4. DATA SMARTKEY
         $skInfrako = $this->parseArrayFilter($request->input('infrako'));
         $skStatus  = $this->parseArrayFilter($request->input('status'));
         $skSn      = $this->parseArrayFilter($request->input('sn'));
@@ -452,26 +467,19 @@ class DashboardController extends Controller
         }
 
         return Inertia::render('Maintenance/Dashboard/Index', [
-            'rpmSummary' => [
-                'totalSite'       => (int) ($rpmKpi->total_dokumen ?? 0),
-                'totalApproved'   => (int) ($rpmKpi->total_approved ?? 0),
-                'totalPending'    => (int) ($rpmKpi->total_pending ?? 0),
-                'totalReject'     => (int) ($rpmKpi->total_reject ?? 0),
-                'totalReturn'     => (int) ($rpmKpi->total_return ?? 0),
-                'chartData'       => $rpmChartData,
-                'monthlyPivot'    => $rpmMonthlyPivot,
-                'rtpPivot'        => $rpmRtpPivot,
-            ],
+            'rpmSummary'      => $antSummary,
             'tiaraSummary'    => $tiaraData['summary'] ?? [],
+            'rpmAllSummary'  => $rpmAllSummary,
             'smartkeySummary' => [
-                'summary'    => $skSummary,
-                'chart'      => $skChart,
-                'mapData'    => $skMapData,
-                'tableData'  => $skTableData,
+                'summary'   => $skSummary,
+                'chart'     => $skChart,
+                'mapData'   => $skMapData,
+                'tableData' => $skTableData,
             ],
             'filterOptions' => [
                 'rpm'      => $rpmFilterOptions,
-                'tiara'    => $tiaraData['options'] ?? ['regional' => [], 'vendor' => []],
+                'tiara'    => $tiaraData['options'] ?? ['tahun' => [], 'rtp' => []],
+                'rpmAll'   => $allFilterOptions,
                 'smartkey' => $skFilterOptions,
             ],
             'filters' => [
@@ -479,7 +487,8 @@ class DashboardController extends Controller
                     'tahun' => $rpmTahun,
                     'rtp'   => $rpmRtp,
                 ],
-                'tiara'    => $tiaraData['filters'] ?? ['regional' => 'ALL', 'vendor' => 'ALL'],
+                'tiara'  => $tiaraData['filters'] ?? ['tahun' => 'ALL', 'rtp' => 'ALL'],
+                'rpmAll' => ['tahun' => $rpmTahun, 'rtp' => $rpmRtp],
                 'smartkey' => [
                     'infrako' => $skInfrako,
                     'status'  => $skStatus,

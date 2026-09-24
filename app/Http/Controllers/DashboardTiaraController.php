@@ -24,33 +24,42 @@ class DashboardTiaraController extends Controller
     }
 
     /**
-     * Helper ekstrak bulan (1..12) dan tahun dari string maintenance_date
+     * Normalisasi Nama TO / Area TANPA SPASI (Contoh: TO BEKASI BARAT -> TOBEKASIBARAT)
      */
-    private function extractMonthAndYear(?string $dateStr, $createdAt = null): array
+    private function normalizeToName(?string $raw): string
+    {
+        if (empty($raw)) return 'UNASSIGNED';
+
+        $clean = strtoupper(trim($raw));
+        // Hapus seluruh spasi dan karakter non-alphanumeric
+        $clean = preg_replace('/[^A-Z0-9]/', '', $clean);
+
+        if (empty($clean)) return 'UNASSIGNED';
+
+        if (!str_starts_with($clean, 'TO')) {
+            $clean = 'TO' . $clean;
+        }
+
+        return $clean;
+    }
+
+    /**
+     * Helper ekstraksi bulan (1..12) dan tahun murni dari maintenance_date (tanpa fallback created_at)
+     */
+    private function extractMonthAndYear(?string $dateStr): array
     {
         if (!empty($dateStr)) {
             $trimmed = trim($dateStr);
             
-            // Format YYYY-MM-DD
             if (preg_match('/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/', $trimmed, $m)) {
                 return [(int)$m[2], (string)$m[1]];
             }
-            // Format DD-MM-YYYY
             if (preg_match('/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/', $trimmed, $m)) {
                 return [(int)$m[2], (string)$m[3]];
             }
 
             try {
                 $dt = Carbon::parse($trimmed);
-                return [$dt->month, (string)$dt->year];
-            } catch (\Exception $e) {
-                // Fallback jika format tanggal tidak baku
-            }
-        }
-
-        if ($createdAt) {
-            try {
-                $dt = Carbon::parse($createdAt);
                 return [$dt->month, (string)$dt->year];
             } catch (\Exception $e) {}
         }
@@ -59,96 +68,106 @@ class DashboardTiaraController extends Controller
     }
 
     /**
-     * Mengambil seluruh data kalkulasi & agregasi RPM TIARA untuk Dashboard
+     * Mengambil seluruh data agregasi RPM TIARA untuk Dashboard
      */
     public function getSummaryData(Request $request): array
     {
+        @set_time_limit(120);
+
         $tiaraTahun = $this->parseFilterValue($request->input('tahun'), 'ALL');
         $tiaraRtp   = $this->parseFilterValue($request->input('rtp'), 'ALL');
 
-        $tiaraQuery = RpmTiaraMaster::query();
+        // Menggunakan DB::table untuk performa optimal (Fast & Low Memory)
+        $records = DB::table('rpm_tiara_masters')->get();
 
-        // 1. FILTER KHUSUS BERDASARKAN KOLOM sitearea_to (TO / Area)
-        if (!empty($tiaraRtp) && strtoupper($tiaraRtp) !== 'ALL') {
-            $tiaraQuery->where('sitearea_to', '=', $tiaraRtp);
-        }
-
-        $tiaraStatusCol    = "UPPER(TRIM(COALESCE(dashboard_status, '')))";
-        $tiaraCondApproved = "{$tiaraStatusCol} = 'APPROVED'";
-        $tiaraCondReject   = "{$tiaraStatusCol} = 'REJECTED'";
-        $tiaraCondReturn   = "{$tiaraStatusCol} = 'RETURNED'";
-        $tiaraCondPending  = "({$tiaraStatusCol} = 'PENDING' OR {$tiaraStatusCol} = '')";
-
-        // 2. TABEL PIVOT DIBIKIN GROUP BY sitearea_to (TO / Area)
-        $tiaraRtpPivot = (clone $tiaraQuery)
-            ->selectRaw("
-                COALESCE(NULLIF(TRIM(sitearea_to), ''), 'Unassigned') as rtp_name,
-                SUM(CASE WHEN {$tiaraCondApproved} THEN 1 ELSE 0 END) as ok,
-                SUM(CASE WHEN {$tiaraCondReject} THEN 1 ELSE 0 END) as reject,
-                SUM(CASE WHEN {$tiaraCondReturn} THEN 1 ELSE 0 END) as return_val,
-                SUM(CASE WHEN {$tiaraCondPending} THEN 1 ELSE 0 END) as belum,
-                COUNT(*) as total
-            ")
-            ->groupBy(DB::raw("COALESCE(NULLIF(TRIM(sitearea_to), ''), 'Unassigned')"))
-            ->get()
-            ->map(function ($item) {
-                $tot = (int) $item->total;
-                $ok  = (int) $item->ok;
-                $ret = (int) $item->return_val;
-                return [
-                    'rtp'       => $item->rtp_name,
-                    'ok'        => $ok,
-                    'belum'     => (int) $item->belum,
-                    'reject'    => (int) $item->reject,
-                    'returnVal' => $ret,
-                    'total'     => $tot,
-                    'pct'       => $tot > 0 ? round(($ok / $tot) * 100) : 0,
-                ];
-            });
-
-        // 3. KALKULASI BULANAN & OPTION TAHUN
-        $monthlyParsed = [];
-        for ($i = 1; $i <= 12; $i++) {
-            $monthlyParsed[$i] = ['ok' => 0, 'belum' => 0, 'reject' => 0, 'returnVal' => 0];
-        }
-
+        // 1. DEDUPLIKASI SITE ID PER BULAN & NORMALISASI TO / AREA
+        $dedupedRecords = [];
         $availableYears = [];
-        $records = (clone $tiaraQuery)
-            ->select(['maintenance_date', 'dashboard_status', 'created_at'])
-            ->get();
-
-        $totDoc = 0;
-        $totApp = 0;
-        $totRej = 0;
-        $totRet = 0;
-        $totPen = 0;
 
         foreach ($records as $row) {
-            [$m, $y] = $this->extractMonthAndYear($row->maintenance_date, $row->created_at);
+            [$m, $y] = $this->extractMonthAndYear($row->maintenance_date ?? null);
+            if (!$m || !$y) continue;
 
-            if ($y) {
-                $availableYears[$y] = true;
-            }
+            $availableYears[$y] = true;
 
             if (!empty($tiaraTahun) && strtoupper($tiaraTahun) !== 'ALL' && $y !== $tiaraTahun) {
                 continue;
             }
 
-            $totDoc++;
+            $toNormalized = $this->normalizeToName($row->sitearea_to ?? $row->to ?? '');
+
+            if (!empty($tiaraRtp) && strtoupper($tiaraRtp) !== 'ALL') {
+                $targetRtp = $this->normalizeToName($tiaraRtp);
+                if ($toNormalized !== $targetRtp) {
+                    continue;
+                }
+            }
+
+            $siteId = trim($row->site_id ?? $row->siteid ?? $row->no_tiket_tiara ?? $row->id ?? '');
+            if (empty($siteId)) {
+                $siteId = 'UNKNOWN_' . uniqid();
+            }
+
             $st = strtoupper(trim($row->dashboard_status ?? ''));
+
+            $rank = match ($st) {
+                'APPROVED', 'OK', 'DONE' => 1,
+                'REJECTED', 'REJECT'     => 2,
+                'RETURNED', 'RETURN'     => 3,
+                default                  => 4
+            };
+
+            $uniqueKey = "{$y}_{$m}_{$siteId}";
+
+            if (!isset($dedupedRecords[$uniqueKey]) || $rank < $dedupedRecords[$uniqueKey]['rank']) {
+                $dedupedRecords[$uniqueKey] = [
+                    'month'   => $m,
+                    'year'    => $y,
+                    'site_id' => $siteId,
+                    'to'      => $toNormalized,
+                    'status'  => $st,
+                    'rank'    => $rank,
+                ];
+            }
+        }
+
+        // 2. KALKULASI AGREGASI HASIL DEDUPLIKASI
+        $totDoc = 0; $totApp = 0; $totRej = 0; $totRet = 0; $totPen = 0;
+
+        $monthlyParsed = [];
+        for ($i = 1; $i <= 12; $i++) {
+            $monthlyParsed[$i] = ['ok' => 0, 'belum' => 0, 'reject' => 0, 'returnVal' => 0];
+        }
+
+        $toPivotMap = [];
+
+        foreach ($dedupedRecords as $item) {
+            $totDoc++;
+            $st = $item['status'];
+            $m  = $item['month'];
+            $to = $item['to'];
+
+            if (!isset($toPivotMap[$to])) {
+                $toPivotMap[$to] = ['ok' => 0, 'belum' => 0, 'reject' => 0, 'returnVal' => 0, 'total' => 0];
+            }
+            $toPivotMap[$to]['total']++;
 
             if ($st === 'APPROVED' || $st === 'OK' || $st === 'DONE') {
                 $totApp++;
                 $statusCategory = 'ok';
+                $toPivotMap[$to]['ok']++;
             } elseif ($st === 'REJECTED' || $st === 'REJECT') {
                 $totRej++;
                 $statusCategory = 'reject';
+                $toPivotMap[$to]['reject']++;
             } elseif ($st === 'RETURNED' || $st === 'RETURN') {
                 $totRet++;
                 $statusCategory = 'returnVal';
+                $toPivotMap[$to]['returnVal']++;
             } else {
                 $totPen++;
                 $statusCategory = 'belum';
+                $toPivotMap[$to]['belum']++;
             }
 
             if ($m >= 1 && $m <= 12) {
@@ -156,7 +175,25 @@ class DashboardTiaraController extends Controller
             }
         }
 
-        // 4. FORMAT ARRAY CHART & PIVOT BULANAN
+        // 3. FORMAT TABEL PIVOT TO / AREA
+        $tiaraRtpPivot = [];
+        foreach ($toPivotMap as $toName => $countsData) {
+            $tot = $countsData['total'];
+            $ok  = $countsData['ok'];
+            $tiaraRtpPivot[] = [
+                'rtp'       => $toName,
+                'ok'        => $ok,
+                'belum'     => $countsData['belum'],
+                'reject'    => $countsData['reject'],
+                'returnVal' => $countsData['returnVal'],
+                'total'     => $tot,
+                'pct'       => $tot > 0 ? round(($ok / $tot) * 100) : 0,
+            ];
+        }
+
+        usort($tiaraRtpPivot, fn($a, $b) => strcmp($a['rtp'], $b['rtp']));
+
+        // 4. FORMAT CHART & PIVOT BULANAN
         $monthsName     = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
         $fullMonthsName = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
@@ -204,9 +241,6 @@ class DashboardTiaraController extends Controller
             'reject'    => $rawCounts['REJECT'],
             'return'    => $rawCounts['RETURN'],
             'returnVal' => $rawCounts['RETURN'],
-            'Belum'     => $rawCounts['BELUM'],
-            'Reject'    => $rawCounts['REJECT'],
-            'Return'    => $rawCounts['RETURN'],
         ];
 
         $sumOk     = array_sum($rawCounts['OK']);
@@ -224,23 +258,20 @@ class DashboardTiaraController extends Controller
             'reject'    => $sumReject,
             'return'    => $sumReturn,
             'returnVal' => $sumReturn,
-            'Belum'     => $sumBelum,
-            'Reject'    => $sumReject,
-            'Return'    => $sumReturn,
         ];
 
         $overallTotal = array_sum($monthTotals);
-        $overallPct   = $overallTotal > 0 ? round(($sumOk / $overallTotal) * 100) : 0;
 
-        // 5. OPSI DROPDOWN HANYA MENGAMBIL DARI sitearea_to (TO / Area)
         try {
-            $rtpOptions = RpmTiaraMaster::query()
-                ->select(['sitearea_to'])
+            $rawTos = DB::table('rpm_tiara_masters')
                 ->whereNotNull('sitearea_to')
                 ->where('sitearea_to', '!=', '')
-                ->distinct()
-                ->pluck('sitearea_to')
-                ->filter()
+                ->pluck('sitearea_to');
+
+            $rtpOptions = $rawTos
+                ->map(fn($item) => $this->normalizeToName($item))
+                ->unique()
+                ->sort()
                 ->values()
                 ->toArray();
         } catch (\Throwable $e) {
@@ -264,7 +295,7 @@ class DashboardTiaraController extends Controller
                     'monthPct'     => $monthPct,
                     'rowTotals'    => $rowTotals,
                     'overallTotal' => $overallTotal,
-                    'overallPct'   => $overallPct,
+                    'overallPct'   => $overallTotal > 0 ? round(($totApp / $overallTotal) * 100) : 0,
                 ],
                 'rtpPivot'      => $tiaraRtpPivot,
             ],
