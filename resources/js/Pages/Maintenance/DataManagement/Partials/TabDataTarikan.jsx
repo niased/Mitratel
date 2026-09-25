@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { usePage } from '@inertiajs/react';
-import Icon from '@/Components/Icon';
+import Icon from '@/components/Icon';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 

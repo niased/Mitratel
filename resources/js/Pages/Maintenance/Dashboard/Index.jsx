@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Head } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import Icon from '@/Components/Icon';
+import Icon from '@/components/Icon';
 
 import DashboardRpm from './DashboardRpm';
 import DashboardSmartkey from './DashboardSmartkey';
