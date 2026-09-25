@@ -74,7 +74,7 @@ class DataAutoReportTiaraController extends Controller
             }
 
             $siteCode    = $this->cleanString($norm['siteoperatorcode'] ?? $norm['siteid'] ?? $norm['sitecode'] ?? $norm['idsite'] ?? $row['siteoperator_code'] ?? '', 100);
-            $siteName    = $this->cleanString($norm['siteoperatorname'] ?? $norm['sitename'] ?? $norm['namasite'] ?? $row['siteoperator_name'] ?? '', 255);
+            $siteName    = $this->cleanString($norm['siteoperator_name'] ?? $norm['siteoperatorcode'] ?? $norm['siteid'] ?? $norm['sitename'] ?? $norm['namasite'] ?? $row['siteoperator_name'] ?? '', 255);
             $areaReg     = $this->cleanString($norm['siteareareg'] ?? $norm['region'] ?? $norm['regional'] ?? $norm['areareg'] ?? $row['sitearea_reg'] ?? '', 255);
             $areaTo      = $this->cleanString($norm['siteareato'] ?? $norm['to'] ?? $norm['rtp'] ?? $norm['area'] ?? $norm['areato'] ?? $row['sitearea_to'] ?? '', 255);
             $companyName = $this->cleanString($norm['companyname'] ?? $norm['mitra'] ?? $norm['vendor'] ?? $norm['company'] ?? $norm['namamitra'] ?? $row['company_name'] ?? '', 255);
@@ -127,35 +127,57 @@ class DataAutoReportTiaraController extends Controller
         $allRows   = array_values($sanitizedData);
 
         try {
-            // 1. Cek Tiket yang Sudah Ada di Database per 1.000 batch
+            // 1. Ambil dashboard_status DAN ticket_statusname dari Database
             $existingMasters = [];
             foreach (array_chunk($uniqueIds, 1000) as $chunkIds) {
                 $found = DB::table('rpm_tiara_masters')
                     ->whereIn('ticket_number', $chunkIds)
-                    ->pluck('dashboard_status', 'ticket_number')
-                    ->toArray();
-                foreach ($found as $tk => $st) {
-                    $existingMasters[$tk] = $st;
+                    ->get(['ticket_number', 'dashboard_status', 'ticket_statusname']);
+
+                foreach ($found as $item) {
+                    $existingMasters[$item->ticket_number] = [
+                        'dashboard_status'  => $item->dashboard_status ?? 'PENDING',
+                        'ticket_statusname' => $item->ticket_statusname ?? '',
+                    ];
                 }
             }
 
             // 2. Mode Pratinjau (Preview XLOOKUP)
             if ($previewOnly) {
-                $previewList = [];
+                $previewList   = [];
                 $insertedCount = 0;
                 $updatedCount  = 0;
 
                 foreach ($allRows as $row) {
                     $tk = $row['ticket_number'];
                     $exists = array_key_exists($tk, $existingMasters);
+
                     if ($exists) {
-                        $updatedCount++;
-                        $previewList[] = array_merge($row, [
-                            'is_new'         => false,
-                            'xlookup_status' => 'UPDATE',
-                            'status_xlookup' => 'UPDATE',
-                            'status_desc'    => "Update ({$existingMasters[$tk]} -> {$row['dashboard_status']})",
-                        ]);
+                        $oldMaster    = $existingMasters[$tk];
+                        $oldDash      = strtoupper(trim((string)$oldMaster['dashboard_status']));
+                        $newDash      = strtoupper(trim((string)($row['dashboard_status'] ?? 'PENDING')));
+
+                        $oldStatusRaw = trim((string)$oldMaster['ticket_statusname']);
+                        $newStatusRaw = trim((string)($row['ticket_statusname'] ?? ''));
+
+                        // Cek apakah Dashboard Status BERBEDA ATAU Status Mentah BERBEDA
+                        $isDashboardChanged = ($oldDash !== $newDash);
+                        $isRawStatusChanged = ($oldStatusRaw !== '' && $newStatusRaw !== '' && strtolower($oldStatusRaw) !== strtolower($newStatusRaw));
+
+                        if ($isDashboardChanged || $isRawStatusChanged) {
+                            $updatedCount++;
+
+                            $descText = $isDashboardChanged 
+                                ? "Update ({$oldDash} ➔ {$newDash})" 
+                                : "Update Status ({$oldStatusRaw} ➔ {$newStatusRaw})";
+
+                            $previewList[] = array_merge($row, [
+                                'is_new'         => false,
+                                'xlookup_status' => 'UPDATE',
+                                'status_xlookup' => 'UPDATE',
+                                'status_desc'    => $descText,
+                            ]);
+                        }
                     } else {
                         $insertedCount++;
                         $previewList[] = array_merge($row, [
@@ -176,21 +198,19 @@ class DataAutoReportTiaraController extends Controller
                 ]);
             }
 
-            // 3. Mode Simpan Ke Database (Ultra-Fast Bulk Delete + Insert)
+            // 3. Mode Simpan Ke Database (Bulk Delete + Insert Data Terbaru)
             $existingTicketNumbers = array_keys($existingMasters);
             $updatedCount  = count($existingTicketNumbers);
             $insertedCount = count($allRows) - $updatedCount;
 
             DB::beginTransaction();
 
-            // (A) Hapus record lama yang mau di-update agar query tidak menggantung / timeout
             if (!empty($existingTicketNumbers)) {
                 foreach (array_chunk($existingTicketNumbers, 1000) as $chunkIds) {
                     DB::table('rpm_tiara_masters')->whereIn('ticket_number', $chunkIds)->delete();
                 }
             }
 
-            // (B) Direct Bulk Insert SEMUA Data (Baru + Update) per 1000 batch
             if (!empty($allRows)) {
                 foreach (array_chunk($allRows, 1000) as $chunk) {
                     DB::table('rpm_tiara_masters')->insert($chunk);

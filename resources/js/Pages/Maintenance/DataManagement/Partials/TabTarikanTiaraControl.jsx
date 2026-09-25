@@ -62,7 +62,7 @@ export default function useTabTarikanTiaraControl(canWrite) {
 
         const colTicket     = findColIdx(['notikettiara', 'ticketnumber', 'tiaraid', 'idtiara', 'ticketid', 'norpm', 'notiket', 'ticket', 'notikettiaramain']);
         const colSiteCode   = findColIdx(['siteoperatorcode', 'siteid', 'kodetower', 'sitecode', 'kodesite', 'siteoperator_code']);
-        const colSiteName   = findColIdx(['siteoperatorname', 'sitename', 'namasite', 'namatower', 'siteoperator_name', 'nama_site']);
+        const colSiteName   = findColIdx(['siteoperator_name', 'siteoperatorcode', 'siteid', 'sitename', 'namasite', 'namatower', 'nama_site']);
         const colReg        = findColIdx(['siteareareg', 'regional', 'region', 'rtp']);
         const colTo         = findColIdx(['siteareato', 'toarea', 'to', 'area']);
         const colCompany    = findColIdx(['companyname', 'mitra', 'vendor', 'namamitra', 'company']);
@@ -132,7 +132,7 @@ export default function useTabTarikanTiaraControl(canWrite) {
 
             setTiaraSteps(prev => ({ ...prev, filter: 'done', clean: 'done', xlookup: 'processing' }));
             setTiaraProgress(40);
-            setTiaraStatusText('Menjalankan XLOOKUP bergelombang...');
+            setTiaraStatusText('Memproses Engine Rpm(Tiara)...');
 
             const targetUrl = typeof route === 'function' 
                 ? route('maintenance.data-management.process-tiara-batch') 
@@ -153,31 +153,31 @@ export default function useTabTarikanTiaraControl(canWrite) {
 
             setTiaraSteps(prev => ({ ...prev, xlookup: 'done', detectNa: 'processing' }));
             setTiaraProgress(88);
-            setTiaraStatusText('Menyaring baris data baru (#N/A)...');
+            setTiaraStatusText('Menyiapkan pratinjau data baru (#N/A) & perubahan status...');
 
-            const newOnly = allProcessedRows.filter(r => 
-                r.is_new === true || 
-                r.is_new === 1 || 
-                r.status_xlookup === '#N/A'
-            );
+            // LANGSUNG TERIMA SEMUA BARIS HASIL XLOOKUP DARI BACKEND (Data Baru + Update Terdeteksi)
+            setPreviewData(allProcessedRows);
 
-            setPreviewData(newOnly);
+            const newCount = allProcessedRows.filter(r => r.is_new === true || r.is_new === 1 || r.xlookup_status === '#N/A' || r.status_xlookup === '#N/A').length;
+            const updateCount = allProcessedRows.length - newCount;
+
             setTiaraStats({
                 total: rows.length,
-                newCount: newOnly.length,
+                newCount,
+                updateCount,
             });
 
-            if (newOnly.length === 0) {
+            if (allProcessedRows.length === 0) {
                 showToast(
                     'info', 
                     'Engine Selesai', 
-                    `Seluruh data di CSV (${rows.length.toLocaleString('id-ID')} baris) sudah ada di Master Data TIARA.`
+                    `Seluruh data di CSV (${rows.length.toLocaleString('id-ID')} baris) sudah sesuai dan tidak ada perubahan status.`
                 );
             } else {
                 showToast(
                     'success',
                     'Pratinjau Siap',
-                    `Terdeteksi ${newOnly.length.toLocaleString('id-ID')} data baru (#N/A) yang siap dimasukkan ke Master Data.`
+                    `Terdeteksi ${allProcessedRows.length.toLocaleString('id-ID')} data relevan (${newCount.toLocaleString('id-ID')} Data Baru, ${updateCount.toLocaleString('id-ID')} Perubahan Status).`
                 );
             }
 
@@ -221,14 +221,14 @@ export default function useTabTarikanTiaraControl(canWrite) {
             showToast(
                 'success', 
                 'Penyimpanan Berhasil', 
-                `Berhasil menyimpan ${totalData.toLocaleString('id-ID')} data baru ke Master Data RPM (TIARA)!`
+                `Berhasil menyimpan ${totalData.toLocaleString('id-ID')} data ke Master Data RPM (TIARA)!`
             );
 
             setPreviewData([]);
             setFileTiara(null);
             if (fileTiaraInputRef.current) fileTiaraInputRef.current.value = '';
 
-            // ME-REFRESH PROPS INERTIA RELEVAN AGAR TABEL & COUNTER KANAN LANGSUNG TERUPDATE
+            // Refresh props Inertia agar tabel dan ringkasan diperbarui
             router.reload({ only: ['tiaraMasters', 'summary', 'rpmMasters', 'smartkeyMasters'] });
         } catch (err) {
             showToast('error', 'Gagal Menyimpan', 'Terjadi kendala saat menyimpan data ke database.');
