@@ -52,7 +52,7 @@ export default function StatistikRpm({ summary = {} }) {
         </CardHeader>
         <CardContent className="px-4 pb-4">
           <div className="text-2xl font-bold text-amber-600 dark:text-amber-500 tracking-tight">{totalPending.toLocaleString('id-ID')}</div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Belum/Tidak OM/Reviewed</p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Belum/Tidak OM/Reviewed/Waiting/New</p>
         </CardContent>
       </Card>
 

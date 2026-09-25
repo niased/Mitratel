@@ -163,8 +163,8 @@ export default function DashboardIndex({
                                 title="Performa Log RPM (ANT)"
                                 description="Ringkasan aktivitas dan Performa RPM (Ant)"
                                 summary={rpmSummary}
-                                options={filterOptions.rpm || {}}
-                                filters={filters.rpm || {}}
+                                options={filterOptions.rpm || filterOptions || {}}
+                                filters={filters.rpm || filters || {}}
                             />
                         </div>
                     </div>
@@ -180,8 +180,8 @@ export default function DashboardIndex({
                                 title="Performa RPM (TIARA)"
                                 description="Ringkasan aktivitas & performa RPM (Tiara)"
                                 summary={tiaraSummary}
-                                options={filterOptions.tiara || {}}
-                                filters={filters.tiara || {}}
+                                options={filterOptions.tiara || filterOptions || {}}
+                                filters={filters.tiara || filters || {}}
                             />
                         </div>
                     </div>
@@ -197,8 +197,8 @@ export default function DashboardIndex({
                                 title="Performa RPM (Gabungan)"
                                 description="Ringkasan akumulasi aktivitas & performa RPM (ANT + TIARA)"
                                 summary={rpmAllSummary}
-                                options={filterOptions.rpmAll || {}}
-                                filters={filters.rpmAll || {}}
+                                options={filterOptions.rpmAll || filterOptions || {}}
+                                filters={filters.rpmAll || filters || {}}
                             />
                         </div>
                     </div>
@@ -224,8 +224,8 @@ export default function DashboardIndex({
                         <div className="w-full relative z-0">
                             <DashboardSmartkey
                                 summary={smartkeySummary}
-                                options={filterOptions.smartkey || {}}
-                                filters={filters.smartkey || {}}
+                                options={filterOptions.smartkey || filterOptions || {}}
+                                filters={filters.smartkey || filters || {}}
                             />
                         </div>
                     </div>
