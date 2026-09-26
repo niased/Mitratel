@@ -138,7 +138,7 @@ export default function useTabTarikanTiaraControl(canWrite) {
                 ? route('maintenance.data-management.process-tiara-batch') 
                 : '/maintenance/data-management/process-tiara-batch';
 
-            const previewBatchSize = 5000;
+            const previewBatchSize = 3000;
             let allProcessedRows = [];
 
             for (let i = 0; i < rows.length; i += previewBatchSize) {
@@ -155,7 +155,6 @@ export default function useTabTarikanTiaraControl(canWrite) {
             setTiaraProgress(88);
             setTiaraStatusText('Menyiapkan pratinjau data baru (#N/A) & perubahan status...');
 
-            // LANGSUNG TERIMA SEMUA BARIS HASIL XLOOKUP DARI BACKEND (Data Baru + Update Terdeteksi)
             setPreviewData(allProcessedRows);
 
             const newCount = allProcessedRows.filter(r => r.is_new === true || r.is_new === 1 || r.xlookup_status === '#N/A' || r.status_xlookup === '#N/A').length;
@@ -195,48 +194,50 @@ export default function useTabTarikanTiaraControl(canWrite) {
         }
     };
 
-    const handleConfirmSaveMaster = async () => {
-        if (previewData.length === 0) return;
-        setIsSavingMaster(true);
-        setSaveProgressPercent(0);
+ const handleConfirmSaveMaster = async () => {
+    if (previewData.length === 0) return;
+    setIsSavingMaster(true);
+    setSaveProgressPercent(0);
 
-        try {
-            const batchSize = 3000;
-            const totalData = previewData.length;
-            let processed = 0;
+    try {
+        // Dikirim per 2.500 data agar request HTTP super cepat & instan
+        const batchSize = 2500;
+        const totalData = previewData.length;
+        let processed = 0;
 
-            const targetUrl = typeof route === 'function' 
-                ? route('maintenance.data-management.process-tiara-batch') 
-                : '/maintenance/data-management/process-tiara-batch';
+        const targetUrl = typeof route === 'function' 
+            ? route('maintenance.data-management.process-tiara-batch') 
+            : '/maintenance/data-management/process-tiara-batch';
 
-            for (let i = 0; i < totalData; i += batchSize) {
-                const chunk = previewData.slice(i, i + batchSize);
-                await axios.post(targetUrl, { rows: chunk, preview_only: false });
-                
-                processed += chunk.length;
-                const percent = Math.min(Math.round((processed / totalData) * 100), 100);
-                setSaveProgressPercent(percent);
-            }
-
-            showToast(
-                'success', 
-                'Penyimpanan Berhasil', 
-                `Berhasil menyimpan ${totalData.toLocaleString('id-ID')} data ke Master Data RPM (TIARA)!`
-            );
-
-            setPreviewData([]);
-            setFileTiara(null);
-            if (fileTiaraInputRef.current) fileTiaraInputRef.current.value = '';
-
-            // Refresh props Inertia agar tabel dan ringkasan diperbarui
-            router.reload({ only: ['tiaraMasters', 'summary', 'rpmMasters', 'smartkeyMasters'] });
-        } catch (err) {
-            showToast('error', 'Gagal Menyimpan', 'Terjadi kendala saat menyimpan data ke database.');
-        } finally {
-            setIsSavingMaster(false);
-            setSaveProgressPercent(0);
+        for (let i = 0; i < totalData; i += batchSize) {
+            const chunk = previewData.slice(i, i + batchSize);
+            await axios.post(targetUrl, { rows: chunk, preview_only: false });
+            
+            processed += chunk.length;
+            const percent = Math.min(Math.round((processed / totalData) * 100), 100);
+            setSaveProgressPercent(percent);
         }
-    };
+
+        showToast(
+            'success', 
+            'Penyimpanan Berhasil', 
+            `Berhasil menyimpan ${totalData.toLocaleString('id-ID')} data ke Master Data RPM (TIARA)!`
+        );
+
+        setPreviewData([]);
+        setFileTiara(null);
+        if (fileTiaraInputRef.current) fileTiaraInputRef.current.value = '';
+
+        router.reload({ only: ['tiaraMasters', 'summary', 'rpmMasters', 'smartkeyMasters'] });
+    } catch (err) {
+        console.error(err);
+        const msg = err.response?.data?.message || err.message || 'Terjadi kendala saat menyimpan data ke database.';
+        showToast('error', 'Gagal Menyimpan', msg);
+    } finally {
+        setIsSavingMaster(false);
+        setSaveProgressPercent(0);
+    }
+};
 
     const handleCancelPreview = () => {
         setPreviewData([]);

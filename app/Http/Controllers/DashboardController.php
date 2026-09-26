@@ -319,16 +319,19 @@ class DashboardController extends Controller
             'overallPct'   => $overallPct,
         ];
 
+        // Abaikan data RTP yang NULL/Kosong agar tidak membentuk baris UNASSIGNED
         $rpmRtpPivot = (clone $rpmQuery)
+            ->where('rtp', '!=', null)
+            ->where('rtp', '!=', '')
             ->selectRaw("
-                COALESCE(NULLIF(TRIM(rtp), ''), 'Unassigned') as rtp_name,
+                TRIM(rtp) as rtp_name,
                 SUM(CASE WHEN {$condApproved} THEN 1 ELSE 0 END) as ok,
                 SUM(CASE WHEN {$condReject} THEN 1 ELSE 0 END) as reject,
                 SUM(CASE WHEN {$condReturn} THEN 1 ELSE 0 END) as return_val,
                 SUM(CASE WHEN {$condPending} THEN 1 ELSE 0 END) as belum,
                 COUNT(*) as total
             ", [])
-            ->groupBy(DB::raw("COALESCE(NULLIF(TRIM(rtp), ''), 'Unassigned')"))
+            ->groupBy(DB::raw("TRIM(rtp)"))
             ->get()
             ->map(function ($item) {
                 $tot    = (int) $item->total;
@@ -357,9 +360,10 @@ class DashboardController extends Controller
             'chartData'     => $rpmChartData,
             'monthlyPivot'  => $rpmMonthlyPivot,
             'rtpPivot'      => $rpmRtpPivot->toArray(),
+            'regionalPivot' => [], // Array kosong agar RPM ANT Master tidak memunculkan tabel regional
         ];
 
-        // 3. DATA SUMMARY GABUNGAN (PROSES DEDUPLIKASI LINTAS TABEL DARI DashboardCombinedController)
+        // 3. DATA SUMMARY GABUNGAN
         $combinedData     = $combinedController->getSummaryData($request);
         $rpmAllSummary    = $combinedData['summary'] ?? [];
         $allFilterOptions = $combinedData['options'] ?? ['tahun' => [], 'rtp' => []];
@@ -469,7 +473,7 @@ class DashboardController extends Controller
         return Inertia::render('Maintenance/Dashboard/Index', [
             'rpmSummary'      => $antSummary,
             'tiaraSummary'    => $tiaraData['summary'] ?? [],
-            'rpmAllSummary'  => $rpmAllSummary,
+            'rpmAllSummary'   => $rpmAllSummary,
             'smartkeySummary' => [
                 'summary'   => $skSummary,
                 'chart'     => $skChart,

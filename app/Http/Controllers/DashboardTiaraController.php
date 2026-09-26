@@ -31,7 +31,6 @@ class DashboardTiaraController extends Controller
         if (empty($raw)) return 'UNASSIGNED';
 
         $clean = strtoupper(trim($raw));
-        // Hapus seluruh spasi dan karakter non-alphanumeric
         $clean = preg_replace('/[^A-Z0-9]/', '', $clean);
 
         if (empty($clean)) return 'UNASSIGNED';
@@ -44,7 +43,7 @@ class DashboardTiaraController extends Controller
     }
 
     /**
-     * Helper ekstraksi bulan (1..12) dan tahun murni dari maintenance_date (tanpa fallback created_at)
+     * Helper ekstraksi bulan (1..12) dan tahun murni dari maintenance_date
      */
     private function extractMonthAndYear(?string $dateStr): array
     {
@@ -77,10 +76,9 @@ class DashboardTiaraController extends Controller
         $tiaraTahun = $this->parseFilterValue($request->input('tahun'), 'ALL');
         $tiaraRtp   = $this->parseFilterValue($request->input('rtp'), 'ALL');
 
-        // Menggunakan DB::table untuk performa optimal (Fast & Low Memory)
         $records = DB::table('rpm_tiara_masters')->get();
 
-        // 1. DEDUPLIKASI SITE ID PER BULAN & NORMALISASI TO / AREA
+        // 1. DEDUPLIKASI SITE ID PER BULAN & NORMALISASI DATA
         $dedupedRecords = [];
         $availableYears = [];
 
@@ -117,16 +115,20 @@ class DashboardTiaraController extends Controller
                 default                  => 4
             };
 
+            $regVal = strtoupper(trim($row->sitearea_reg ?? $row->regional ?? $row->reg ?? 'UNASSIGNED'));
+            if (empty($regVal)) $regVal = 'UNASSIGNED';
+
             $uniqueKey = "{$y}_{$m}_{$siteId}";
 
             if (!isset($dedupedRecords[$uniqueKey]) || $rank < $dedupedRecords[$uniqueKey]['rank']) {
                 $dedupedRecords[$uniqueKey] = [
-                    'month'   => $m,
-                    'year'    => $y,
-                    'site_id' => $siteId,
-                    'to'      => $toNormalized,
-                    'status'  => $st,
-                    'rank'    => $rank,
+                    'month'    => $m,
+                    'year'     => $y,
+                    'site_id'  => $siteId,
+                    'to'       => $toNormalized,
+                    'regional' => $regVal,
+                    'status'   => $st,
+                    'rank'     => $rank,
                 ];
             }
         }
@@ -139,14 +141,25 @@ class DashboardTiaraController extends Controller
             $monthlyParsed[$i] = ['ok' => 0, 'belum' => 0, 'reject' => 0, 'returnVal' => 0];
         }
 
-        $toPivotMap = [];
+        $toPivotMap      = [];
+        $regionalPivotMap = [];
 
         foreach ($dedupedRecords as $item) {
             $totDoc++;
-            $st = $item['status'];
-            $m  = $item['month'];
-            $to = $item['to'];
+            $st  = $item['status'];
+            $m   = $item['month'];
+            $to  = $item['to'];
+            $reg = $item['regional'];
 
+            // Agregasi Regional per Bulan
+            if (!isset($regionalPivotMap[$reg])) {
+                $regionalPivotMap[$reg] = array_fill(1, 12, 0);
+            }
+            if ($m >= 1 && $m <= 12) {
+                $regionalPivotMap[$reg][$m]++;
+            }
+
+            // Agregasi RTP
             if (!isset($toPivotMap[$to])) {
                 $toPivotMap[$to] = ['ok' => 0, 'belum' => 0, 'reject' => 0, 'returnVal' => 0, 'total' => 0];
             }
@@ -175,7 +188,25 @@ class DashboardTiaraController extends Controller
             }
         }
 
-        // 3. FORMAT TABEL PIVOT TO / AREA
+        // 3. FORMAT TABEL PIVOT REGIONAL (BULANAN)
+        $tiaraRegionalPivot = [];
+        foreach ($regionalPivotMap as $regName => $mCounts) {
+            $countsArray = [];
+            $sum = 0;
+            for ($i = 1; $i <= 12; $i++) {
+                $val = $mCounts[$i] ?? 0;
+                $countsArray[] = $val;
+                $sum += $val;
+            }
+            $tiaraRegionalPivot[] = [
+                'regional' => $regName,
+                'counts'   => $countsArray,
+                'total'    => $sum,
+            ];
+        }
+        usort($tiaraRegionalPivot, fn($a, $b) => strcmp($a['regional'], $b['regional']));
+
+        // 4. FORMAT TABEL PIVOT TO / AREA
         $tiaraRtpPivot = [];
         foreach ($toPivotMap as $toName => $countsData) {
             $tot = $countsData['total'];
@@ -190,10 +221,9 @@ class DashboardTiaraController extends Controller
                 'pct'       => $tot > 0 ? round(($ok / $tot) * 100) : 0,
             ];
         }
-
         usort($tiaraRtpPivot, fn($a, $b) => strcmp($a['rtp'], $b['rtp']));
 
-        // 4. FORMAT CHART & PIVOT BULANAN
+        // 5. FORMAT CHART & PIVOT BULANAN
         $monthsName     = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
         $fullMonthsName = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
@@ -298,6 +328,7 @@ class DashboardTiaraController extends Controller
                     'overallPct'   => $overallTotal > 0 ? round(($totApp / $overallTotal) * 100) : 0,
                 ],
                 'rtpPivot'      => $tiaraRtpPivot,
+                'regionalPivot' => $tiaraRegionalPivot, // <--- DATA PIVOT REGIONAL DISERTAKAN DI SINI
             ],
             'options' => [
                 'tahun' => $yearList,

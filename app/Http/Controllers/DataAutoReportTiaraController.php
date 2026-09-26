@@ -21,7 +21,30 @@ class DataAutoReportTiaraController extends Controller
     }
 
     /**
-     * Engine High-Speed Batch: RPM TIARA (Ultra Fast Bulk Execution)
+     * Helper Pembersih Tanggal Cepat & Safe untuk PostgreSQL
+     */
+    private function cleanDate(mixed $value): ?string
+    {
+        if (is_null($value)) {
+            return null;
+        }
+        $str = trim((string)$value);
+        if ($str === '' || $str === '0000-00-00' || strcasecmp($str, 'null') === 0) {
+            return null;
+        }
+        // Fast path untuk format standar YYYY-MM-DD atau YYYY/MM/DD
+        if (preg_match('/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/', $str, $matches)) {
+            return sprintf('%04d-%02d-%02d', (int)$matches[1], (int)$matches[2], (int)$matches[3]);
+        }
+        try {
+            return Carbon::parse($str)->format('Y-m-d');
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Engine High-Speed Batch: RPM TIARA (Ultra Fast & PostgreSQL Safe)
      */
     public function processRpmTiaraBatch(Request $request): JsonResponse
     {
@@ -47,7 +70,7 @@ class DataAutoReportTiaraController extends Controller
                 continue;
             }
 
-            // Normalisasi key array ke lowercase tanpa spasi/symbol agar anti-mismatch dari Excel/Frontend
+            // Normalisasi key array ke lowercase tanpa spasi/symbol
             $norm = [];
             foreach ($row as $key => $val) {
                 $cleanKey = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', (string)$key));
@@ -64,7 +87,7 @@ class DataAutoReportTiaraController extends Controller
                 ?? $norm['idtiara'] 
                 ?? $norm['norpm'] 
                 ?? $norm['ticket'] 
-                ?? $row['ticket_number'] ?? $row['tiara_id'] ?? $row['ticketnumber'] ?? $row['norpm'] ?? '', 
+                ?? $row['ticket_number'] ?? $row['tiara_id'] ?? '', 
                 100
             );
 
@@ -74,13 +97,21 @@ class DataAutoReportTiaraController extends Controller
             }
 
             $siteCode    = $this->cleanString($norm['siteoperatorcode'] ?? $norm['siteid'] ?? $norm['sitecode'] ?? $norm['idsite'] ?? $row['siteoperator_code'] ?? '', 100);
-            $siteName    = $this->cleanString($norm['siteoperator_name'] ?? $norm['siteoperatorcode'] ?? $norm['siteid'] ?? $norm['sitename'] ?? $norm['namasite'] ?? $row['siteoperator_name'] ?? '', 255);
+            $siteName    = $this->cleanString($norm['siteoperator_name'] ?? $norm['siteoperatorcode'] ?? $norm['siteid'] ?? $norm['sitename'] ?? $norm['namasite'] ?? $norm['namatower'] ?? $row['siteoperator_name'] ?? '', 255);
             $areaReg     = $this->cleanString($norm['siteareareg'] ?? $norm['region'] ?? $norm['regional'] ?? $norm['areareg'] ?? $row['sitearea_reg'] ?? '', 255);
             $areaTo      = $this->cleanString($norm['siteareato'] ?? $norm['to'] ?? $norm['rtp'] ?? $norm['area'] ?? $norm['areato'] ?? $row['sitearea_to'] ?? '', 255);
             $companyName = $this->cleanString($norm['companyname'] ?? $norm['mitra'] ?? $norm['vendor'] ?? $norm['company'] ?? $norm['namamitra'] ?? $row['company_name'] ?? '', 255);
             $typeName    = $this->cleanString($norm['maintenancetypename'] ?? $norm['maintenancetype'] ?? $norm['tipemaintenance'] ?? $norm['jenispekerjaan'] ?? $row['maintenancetype_name'] ?? '', 255);
-            $maintDate   = $this->cleanString($norm['maintenancedate'] ?? $norm['tanggaldone'] ?? $norm['maintdate'] ?? $norm['tglmaintenance'] ?? $row['maintenance_date'] ?? '', 50);
+            
+            // Pembersihan Tanggal Maintenance
+            $rawMaintDate = $norm['maintenancedate'] ?? $norm['tanggaldone'] ?? $norm['maintdate'] ?? $norm['tglmaintenance'] ?? $row['maintenance_date'] ?? null;
+            $maintDate    = $this->cleanDate($rawMaintDate);
+
             $statusName  = $this->cleanString($norm['ticketstatusname'] ?? $norm['status'] ?? $norm['approve'] ?? $norm['ticketstatus'] ?? $row['ticket_statusname'] ?? '', 100);
+
+            if ($siteName === '') {
+                $siteName = $siteCode;
+            }
 
             // Normalisasi Status Dashboard
             $upperStatus = strtoupper($statusName);
@@ -102,7 +133,7 @@ class DataAutoReportTiaraController extends Controller
                 'sitearea_to'         => $areaTo ?: null,
                 'company_name'        => $companyName ?: null,
                 'maintenancetype_name'=> $typeName ?: null,
-                'maintenance_date'    => $maintDate ?: null,
+                'maintenance_date'    => $maintDate,
                 'ticket_statusname'   => $statusName ?: null,
                 'dashboard_status'    => $dashboardStatus,
                 'created_at'          => $now,
@@ -127,23 +158,22 @@ class DataAutoReportTiaraController extends Controller
         $allRows   = array_values($sanitizedData);
 
         try {
-            // 1. Ambil dashboard_status DAN ticket_statusname dari Database
-            $existingMasters = [];
-            foreach (array_chunk($uniqueIds, 1000) as $chunkIds) {
-                $found = DB::table('rpm_tiara_masters')
-                    ->whereIn('ticket_number', $chunkIds)
-                    ->get(['ticket_number', 'dashboard_status', 'ticket_statusname']);
-
-                foreach ($found as $item) {
-                    $existingMasters[$item->ticket_number] = [
-                        'dashboard_status'  => $item->dashboard_status ?? 'PENDING',
-                        'ticket_statusname' => $item->ticket_statusname ?? '',
-                    ];
-                }
-            }
-
-            // 2. Mode Pratinjau (Preview XLOOKUP)
+            // 1. Mode Pratinjau (Preview XLOOKUP)
             if ($previewOnly) {
+                $existingMasters = [];
+                foreach (array_chunk($uniqueIds, 1000) as $chunkIds) {
+                    $found = DB::table('rpm_tiara_masters')
+                        ->whereIn('ticket_number', $chunkIds)
+                        ->get(['ticket_number', 'dashboard_status', 'ticket_statusname']);
+
+                    foreach ($found as $item) {
+                        $existingMasters[$item->ticket_number] = [
+                            'dashboard_status'  => $item->dashboard_status ?? 'PENDING',
+                            'ticket_statusname' => $item->ticket_statusname ?? '',
+                        ];
+                    }
+                }
+
                 $previewList   = [];
                 $insertedCount = 0;
                 $updatedCount  = 0;
@@ -160,13 +190,11 @@ class DataAutoReportTiaraController extends Controller
                         $oldStatusRaw = trim((string)$oldMaster['ticket_statusname']);
                         $newStatusRaw = trim((string)($row['ticket_statusname'] ?? ''));
 
-                        // Cek apakah Dashboard Status BERBEDA ATAU Status Mentah BERBEDA
                         $isDashboardChanged = ($oldDash !== $newDash);
                         $isRawStatusChanged = ($oldStatusRaw !== '' && $newStatusRaw !== '' && strtolower($oldStatusRaw) !== strtolower($newStatusRaw));
 
                         if ($isDashboardChanged || $isRawStatusChanged) {
                             $updatedCount++;
-
                             $descText = $isDashboardChanged 
                                 ? "Update ({$oldDash} ➔ {$newDash})" 
                                 : "Update Status ({$oldStatusRaw} ➔ {$newStatusRaw})";
@@ -198,22 +226,28 @@ class DataAutoReportTiaraController extends Controller
                 ]);
             }
 
-            // 3. Mode Simpan Ke Database (Bulk Delete + Insert Data Terbaru)
-            $existingTicketNumbers = array_keys($existingMasters);
-            $updatedCount  = count($existingTicketNumbers);
-            $insertedCount = count($allRows) - $updatedCount;
-
+            // 2. Mode Simpan (Native PostgreSQL UPSERT - Super Cepat)
             DB::beginTransaction();
 
-            if (!empty($existingTicketNumbers)) {
-                foreach (array_chunk($existingTicketNumbers, 1000) as $chunkIds) {
-                    DB::table('rpm_tiara_masters')->whereIn('ticket_number', $chunkIds)->delete();
-                }
-            }
-
             if (!empty($allRows)) {
-                foreach (array_chunk($allRows, 1000) as $chunk) {
-                    DB::table('rpm_tiara_masters')->insert($chunk);
+                // Chunk 250 baris per UPSERT statement (3.000 parameter - Sangat Cepat & Anti-Limit)
+                foreach (array_chunk($allRows, 250) as $chunk) {
+                    DB::table('rpm_tiara_masters')->upsert(
+                        $chunk,
+                        ['ticket_number'], // Unique Constraint
+                        [
+                            'siteoperator_code',
+                            'siteoperator_name',
+                            'sitearea_reg',
+                            'sitearea_to',
+                            'company_name',
+                            'maintenancetype_name',
+                            'maintenance_date',
+                            'ticket_statusname',
+                            'dashboard_status',
+                            'updated_at',
+                        ]
+                    );
                 }
             }
 
@@ -221,8 +255,8 @@ class DataAutoReportTiaraController extends Controller
 
             return response()->json([
                 'status'   => 'success',
-                'inserted' => $insertedCount,
-                'updated'  => $updatedCount,
+                'inserted' => count($allRows),
+                'updated'  => 0,
                 'skipped'  => $skippedCount,
             ]);
 
@@ -230,9 +264,12 @@ class DataAutoReportTiaraController extends Controller
             if (!$previewOnly) {
                 DB::rollBack();
             }
-            Log::error("Process RPM TIARA Batch Error: " . $e->getMessage());
+            
+            $cleanErrMsg = str_replace(["\r", "\n", "'", '"'], " ", $e->getMessage());
+            Log::error("Process RPM TIARA Batch Error: " . substr($cleanErrMsg, 0, 250));
+
             return response()->json([
-                'message' => 'Gagal menyimpan ke database: ' . $e->getMessage()
+                'message' => 'Gagal menyimpan data ke database: ' . substr($cleanErrMsg, 0, 150)
             ], 500);
         }
     }

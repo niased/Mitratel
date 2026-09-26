@@ -351,7 +351,11 @@ export default function DashboardRpm({ summary = {}, options = {}, filters = {},
                 <GrafikRpm summary={summary} />
 
                 {/* 3. SEKSI TABEL PIVOT */}
-                <TabelRpm monthlyPivot={summary.monthlyPivot || {}} rtpPivot={summary.rtpPivot || []} />
+                <TabelRpm 
+                    monthlyPivot={summary.monthlyPivot || {}} 
+                    rtpPivot={summary.rtpPivot || []} 
+                    regionalPivot={summary.regionalPivot || summary.regPivot || summary.regional_pivot || []} 
+                />
             </div>
         </div>
     );

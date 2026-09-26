@@ -18,9 +18,6 @@ class DashboardCombinedController extends Controller
         return (string) $input;
     }
 
-    /**
-     * Normalisasi Nama TO / Area TANPA SPASI (Contoh: TO BEKASI BARAT -> TOBEKASIBARAT)
-     */
     private function normalizeToName(?string $raw): string
     {
         if (empty($raw)) return 'UNASSIGNED';
@@ -37,9 +34,6 @@ class DashboardCombinedController extends Controller
         return $clean;
     }
 
-    /**
-     * Normalisasi Site ID (Menghapus spasi, strip, dan Uppercase)
-     */
     private function normalizeSiteId(?string $raw): string
     {
         if (empty($raw)) return '';
@@ -70,9 +64,6 @@ class DashboardCombinedController extends Controller
         return null;
     }
 
-    /**
-     * Parsing Bulan & Tahun dari Data TIARA
-     */
     private function extractTiaraMonthAndYear($row): array
     {
         $y = trim((string)($row->year ?? $row->yea ?? $row->tahun ?? ''));
@@ -105,7 +96,6 @@ class DashboardCombinedController extends Controller
     {
         @set_time_limit(120);
 
-        // Parsing parameter Filter
         $tahunFilter    = $this->parseFilterValue($request->input('tahun'), 'ALL');
         $rtpFilter      = $this->parseFilterValue($request->input('rtp'), 'ALL');
         $regionalFilter = $this->parseFilterValue($request->input('regional') ?? $request->input('sitearea_reg'), 'ALL');
@@ -116,11 +106,21 @@ class DashboardCombinedController extends Controller
         $availableRegs    = [];
         $availableSiteIds = [];
 
-        // ---------------------------------------------------------------------
-        // 1. PROSES DATA RPM (ANT)
-        // ---------------------------------------------------------------------
-        $antRecords = DB::table('rpm_masters')->get();
+        // Fetch data
+        $tiaraRecords = DB::table('rpm_tiara_masters')->get();
+        $antRecords   = DB::table('rpm_masters')->get();
 
+        // 0. BUAT MAPPING TO -> REGIONAL DARI DATA TIARA
+        $toToRegMap = [];
+        foreach ($tiaraRecords as $row) {
+            $toNorm = $this->normalizeToName($row->sitearea_to ?? $row->to ?? '');
+            $regVal = strtoupper(trim((string)($row->sitearea_reg ?? $row->regional ?? $row->sitearea_i ?? '')));
+            if ($toNorm !== 'UNASSIGNED' && !empty($regVal) && $regVal !== 'UNASSIGNED' && str_starts_with($regVal, 'REG')) {
+                $toToRegMap[$toNorm] = $regVal;
+            }
+        }
+
+        // 1. PROSES DATA RPM (ANT)
         foreach ($antRecords as $row) {
             $y = trim((string)($row->tahun ?? ''));
             $m = $this->parseMonthNum($row->bulan ?? '') ?? 12;
@@ -134,32 +134,42 @@ class DashboardCombinedController extends Controller
                 $availableSiteIds[$siteIdNorm] = $siteIdNorm;
             }
 
-            $regVal = strtoupper(trim($row->regional ?? $row->sitearea_reg ?? $row->reg ?? ''));
-            if (!empty($regVal)) {
+            $toNormalized = $this->normalizeToName($row->rtp ?? '');
+
+            // Cari regional ANT Master via mapping TO
+            $rawReg = strtoupper(trim((string)($row->regional ?? $row->sitearea_reg ?? $row->reg ?? '')));
+            if (!empty($rawReg) && $rawReg !== 'UNASSIGNED' && str_starts_with($rawReg, 'REG')) {
+                $regVal = $rawReg;
+            } else {
+                if (isset($toToRegMap[$toNormalized])) {
+                    $regVal = $toToRegMap[$toNormalized];
+                } elseif (str_starts_with($toNormalized, 'REG')) {
+                    $regVal = $toNormalized;
+                } else {
+                    $regVal = 'UNASSIGNED';
+                }
+            }
+
+            if ($regVal !== 'UNASSIGNED' && str_starts_with($regVal, 'REG')) {
                 $availableRegs[$regVal] = $regVal;
             }
 
-            // Filter Tahun
             if (!empty($tahunFilter) && strtoupper($tahunFilter) !== 'ALL' && $y !== $tahunFilter) {
                 continue;
             }
 
-            // Filter RTP / TO
-            $toNormalized = $this->normalizeToName($row->rtp ?? '');
             if (!empty($rtpFilter) && strtoupper($rtpFilter) !== 'ALL') {
                 if ($toNormalized !== $this->normalizeToName($rtpFilter)) {
                     continue;
                 }
             }
 
-            // Filter Regional / sitearea_reg
             if (!empty($regionalFilter) && strtoupper($regionalFilter) !== 'ALL') {
                 if ($regVal !== strtoupper(trim($regionalFilter))) {
                     continue;
                 }
             }
 
-            // Filter Site ID
             if (!empty($siteIdFilter) && strtoupper($siteIdFilter) !== 'ALL') {
                 if ($siteIdNorm !== $this->normalizeSiteId($siteIdFilter)) {
                     continue;
@@ -186,11 +196,17 @@ class DashboardCombinedController extends Controller
             }
 
             if (!isset($dedupedRecords[$uniqueKey]) || $rank < $dedupedRecords[$uniqueKey]['rank']) {
+                $existingReg = $dedupedRecords[$uniqueKey]['regional'] ?? 'UNASSIGNED';
+                $finalReg = ($regVal !== 'UNASSIGNED') ? $regVal : $existingReg;
+
+                $existingTo = $dedupedRecords[$uniqueKey]['to'] ?? 'UNASSIGNED';
+                $finalTo = ($toNormalized !== 'UNASSIGNED') ? $toNormalized : $existingTo;
+
                 $dedupedRecords[$uniqueKey] = [
                     'month'    => $m,
                     'year'     => $y,
-                    'to'       => $toNormalized,
-                    'regional' => $regVal,
+                    'to'       => $finalTo,
+                    'regional' => $finalReg,
                     'site_id'  => $siteIdNorm,
                     'status'   => $st,
                     'rank'     => $rank,
@@ -198,11 +214,7 @@ class DashboardCombinedController extends Controller
             }
         }
 
-        // ---------------------------------------------------------------------
         // 2. PROSES DATA RPM (TIARA)
-        // ---------------------------------------------------------------------
-        $tiaraRecords = DB::table('rpm_tiara_masters')->get();
-
         foreach ($tiaraRecords as $row) {
             [$m, $y] = $this->extractTiaraMonthAndYear($row);
 
@@ -215,17 +227,16 @@ class DashboardCombinedController extends Controller
                 $availableSiteIds[$siteIdNorm] = $siteIdNorm;
             }
 
-            $regVal = strtoupper(trim($row->sitearea_reg ?? $row->regional ?? $row->sitearea_i ?? ''));
-            if (!empty($regVal)) {
+            $rawReg = strtoupper(trim((string)($row->sitearea_reg ?? $row->regional ?? $row->sitearea_i ?? '')));
+            $regVal = (!empty($rawReg) && str_starts_with($rawReg, 'REG')) ? $rawReg : 'UNASSIGNED';
+            if ($regVal !== 'UNASSIGNED') {
                 $availableRegs[$regVal] = $regVal;
             }
 
-            // Filter Tahun
             if (!empty($tahunFilter) && strtoupper($tahunFilter) !== 'ALL' && $y !== $tahunFilter) {
                 continue;
             }
 
-            // Filter RTP / TO
             $toNormalized = $this->normalizeToName($row->sitearea_to ?? $row->to ?? '');
             if (!empty($rtpFilter) && strtoupper($rtpFilter) !== 'ALL') {
                 if ($toNormalized !== $this->normalizeToName($rtpFilter)) {
@@ -233,14 +244,12 @@ class DashboardCombinedController extends Controller
                 }
             }
 
-            // Filter Regional / sitearea_reg
             if (!empty($regionalFilter) && strtoupper($regionalFilter) !== 'ALL') {
                 if ($regVal !== strtoupper(trim($regionalFilter))) {
                     continue;
                 }
             }
 
-            // Filter Site ID
             if (!empty($siteIdFilter) && strtoupper($siteIdFilter) !== 'ALL') {
                 if ($siteIdNorm !== $this->normalizeSiteId($siteIdFilter)) {
                     continue;
@@ -273,11 +282,14 @@ class DashboardCombinedController extends Controller
                 $existingTo = $dedupedRecords[$uniqueKey]['to'] ?? 'UNASSIGNED';
                 $finalTo = ($toNormalized !== 'UNASSIGNED') ? $toNormalized : $existingTo;
 
+                $existingReg = $dedupedRecords[$uniqueKey]['regional'] ?? 'UNASSIGNED';
+                $finalReg = ($regVal !== 'UNASSIGNED') ? $regVal : $existingReg;
+
                 $dedupedRecords[$uniqueKey] = [
                     'month'    => $m,
                     'year'     => $y,
                     'to'       => $finalTo,
-                    'regional' => $regVal,
+                    'regional' => $finalReg,
                     'site_id'  => $siteIdNorm,
                     'status'   => $st,
                     'rank'     => $rank,
@@ -285,21 +297,29 @@ class DashboardCombinedController extends Controller
             }
         }
 
-        // ---------------------------------------------------------------------
         // 3. AGREGASI HASIL GABUNGAN
-        // ---------------------------------------------------------------------
         $totDoc = 0; $totApp = 0; $totRej = 0; $totRet = 0; $totPen = 0;
         $monthlyParsed = [];
         for ($i = 1; $i <= 12; $i++) {
             $monthlyParsed[$i] = ['ok' => 0, 'belum' => 0, 'reject' => 0, 'returnVal' => 0];
         }
-        $toPivotMap = [];
+        $toPivotMap       = [];
+        $regionalPivotMap = [];
 
         foreach ($dedupedRecords as $item) {
             $totDoc++;
-            $st = $item['status'];
-            $m  = $item['month'];
-            $to = $item['to'];
+            $st  = $item['status'];
+            $m   = $item['month'];
+            $to  = $item['to'];
+            $reg = $item['regional'];
+
+            // Agregasi Regional per Bulan
+            if (!isset($regionalPivotMap[$reg])) {
+                $regionalPivotMap[$reg] = array_fill(1, 12, 0);
+            }
+            if ($m >= 1 && $m <= 12) {
+                $regionalPivotMap[$reg][$m]++;
+            }
 
             if (!isset($toPivotMap[$to])) {
                 $toPivotMap[$to] = ['ok' => 0, 'belum' => 0, 'reject' => 0, 'returnVal' => 0, 'total' => 0];
@@ -328,6 +348,26 @@ class DashboardCombinedController extends Controller
                 $monthlyParsed[$m][$statusCat]++;
             }
         }
+
+        // Pivot Regional: HANYA MEMERIKSA REGIONAL YANG DIAWALI 'REG' (REG 12, REG 3)
+        $combinedRegionalPivot = [];
+        foreach ($regionalPivotMap as $regName => $mCounts) {
+            if (!str_starts_with($regName, 'REG')) continue;
+
+            $countsArray = [];
+            $sum = 0;
+            for ($i = 1; $i <= 12; $i++) {
+                $val = $mCounts[$i] ?? 0;
+                $countsArray[] = $val;
+                $sum += $val;
+            }
+            $combinedRegionalPivot[] = [
+                'regional' => $regName,
+                'counts'   => $countsArray,
+                'total'    => $sum,
+            ];
+        }
+        usort($combinedRegionalPivot, fn($a, $b) => strcmp($a['regional'], $b['regional']));
 
         // Pivot TO/RTP
         $rtpPivot = [];
@@ -441,6 +481,7 @@ class DashboardCombinedController extends Controller
                     'overallPct'   => $overallTotal > 0 ? round(($totApp / $overallTotal) * 100) : 0,
                 ],
                 'rtpPivot'      => $rtpPivot,
+                'regionalPivot' => $combinedRegionalPivot,
             ],
             'options' => [
                 'tahun'        => $yearList,
