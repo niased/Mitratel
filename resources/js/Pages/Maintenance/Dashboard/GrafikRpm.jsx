@@ -63,7 +63,7 @@ const CustomLinePercentTooltip = ({ active, payload, label, activeStatus }) => {
             Bulan: {data.fullMonth || label}
           </span>
           <span className="text-[10px] text-slate-500 font-mono">
-            Total: {(data.total || 0).toLocaleString('id-ID')}
+            Total:{(data.total || 0).toLocaleString('id-ID')}
           </span>
         </div>
         <div className="space-y-1.5 text-xs">
