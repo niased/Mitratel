@@ -63,7 +63,7 @@ const CustomLinePercentTooltip = ({ active, payload, label, activeStatus }) => {
             Bulan: {data.fullMonth || label}
           </span>
           <span className="text-[10px] text-slate-500 font-mono">
-             {(data.total || 0).toLocaleString('id-ID')} Site
+            Total: {(data.total || 0).toLocaleString('id-ID')}
           </span>
         </div>
         <div className="space-y-1.5 text-xs">
@@ -71,7 +71,7 @@ const CustomLinePercentTooltip = ({ active, payload, label, activeStatus }) => {
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                <span className="text-slate-300 font-medium">OK (Approved):</span>
+                <span className="text-slate-300 font-medium">Approved:</span>
               </div>
               <span className="font-bold text-emerald-400">
                 {(data.OK || 0).toLocaleString('id-ID')} <span className="text-[10px] text-slate-400 font-normal">({data.pctOK}%)</span>
@@ -82,7 +82,7 @@ const CustomLinePercentTooltip = ({ active, payload, label, activeStatus }) => {
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                <span className="text-slate-300 font-medium">Belum (Pending):</span>
+                <span className="text-slate-300 font-medium">Pending:</span>
               </div>
               <span className="font-bold text-amber-400">
                 {(data.Belum || 0).toLocaleString('id-ID')} <span className="text-[10px] text-slate-400 font-normal">({data.pctBelum}%)</span>
