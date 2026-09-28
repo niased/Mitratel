@@ -13,11 +13,9 @@ const safeRoute = (name, params) => {
     return '#';
 };
 
-// MENDUKUNG TICKET_NUMBER DARI RPM (TIARA)
 const getItemId = (item) => item?.id || item?.ticket_number || item?.rpm_id || item?.tiara_id || item?.serial_number;
 
-export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMasters, filters }) {
-    // DETEKSI ROLE USER DARI INERTIA AUTH
+export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMasters, filters, filterOptions }) {
     const { auth } = usePage().props;
     const userRole = auth?.user?.role || 'view';
     const isAdmin = userRole === 'admin';
@@ -29,7 +27,6 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
     const [isRpmDropdownOpen, setIsRpmDropdownOpen] = useState(false);
     const rpmDropdownRef = useRef(null);
 
-    // Close Dropdown saat klik di luar area
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (rpmDropdownRef.current && !rpmDropdownRef.current.contains(event.target)) {
@@ -46,6 +43,8 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
     const [sortOrder, setSortOrder] = useState(filters?.order || 'asc');
     const [perPage, setPerPage] = useState(filters?.per_page || 10);
     const [perPageInput, setPerPageInput] = useState(filters?.per_page || 10);
+    const [statusFilter, setStatusFilter] = useState(filters?.status || 'ALL');
+    const [tahunFilter, setTahunFilter] = useState(filters?.tahun || 'ALL');
     const [isProcessing, setIsProcessing] = useState(false);
 
     // State Row Checkboxes
@@ -58,6 +57,7 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
             : tiaraMasters;
 
     const dataList = currentPagination?.data || [];
+    const tahunOptions = filterOptions?.tahun || ['2025', '2026'];
 
     // --- FITUR DEBOUNCE PENCARIAN ---
     const isMounted = useRef(false);
@@ -69,7 +69,7 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
         }
 
         const timer = setTimeout(() => {
-            fetchFilteredData(searchTerm, sortOrder, perPage, subTab, 1);
+            fetchFilteredData(searchTerm, sortOrder, perPage, subTab, 1, statusFilter, tahunFilter);
         }, 400);
 
         return () => clearTimeout(timer);
@@ -95,11 +95,19 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
 
         if (val !== perPage) {
             setPerPage(val);
-            fetchFilteredData(searchTerm, sortOrder, val, subTab, 1);
+            fetchFilteredData(searchTerm, sortOrder, val, subTab, 1, statusFilter, tahunFilter);
         }
     };
 
-    const fetchFilteredData = (newSearch, newOrder, newPerPage, targetTab = subTab, page = 1) => {
+    const fetchFilteredData = (
+        newSearch, 
+        newOrder, 
+        newPerPage, 
+        targetTab = subTab, 
+        page = 1, 
+        newStatus = statusFilter, 
+        newTahun = tahunFilter
+    ) => {
         setSelectedIds([]);
 
         router.get(
@@ -109,7 +117,9 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
                 search: newSearch,
                 order: newOrder,
                 per_page: newPerPage,
-                page: page
+                page: page,
+                status: newStatus,
+                tahun: newTahun
             },
             {
                 preserveState: true,
@@ -126,7 +136,7 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
 
         setSubTab(tab);
         setSelectedIds([]);
-        fetchFilteredData(searchTerm, sortOrder, perPage, tab, 1);
+        fetchFilteredData(searchTerm, sortOrder, perPage, tab, 1, statusFilter, tahunFilter);
     };
 
     const getRowNumber = (index) => {
@@ -142,7 +152,7 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
         const nextOrder = sortOrder === 'asc' ? 'desc' : 'asc';
 
         setSortOrder(nextOrder);
-        fetchFilteredData(searchTerm, nextOrder, perPage, subTab, 1);
+        fetchFilteredData(searchTerm, nextOrder, perPage, subTab, 1, statusFilter, tahunFilter);
     };
 
     const handlePageChange = (url) => {
@@ -200,7 +210,6 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
         return 'SMART KEY';
     };
 
-    // --- HANDLE HAPUS DATA TERPILIH (HANYA ADMIN) ---
     const handleDeleteSelected = () => {
         if (!isAdmin || selectedIds.length === 0) return;
 
@@ -231,7 +240,6 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
         });
     };
 
-    // --- HANDLE RESET TABLE (HANYA ADMIN) ---
     const handleResetTable = () => {
         if (!isAdmin) return;
 
@@ -286,7 +294,7 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
                                 size="sm"
                                 disabled={isProcessing}
                                 onClick={() => setIsRpmDropdownOpen(prev => !prev)}
-                                className={`text-xs font-bold gap-1.5 transition-all ${
+                                className={`text-xs font-bold gap-1.5 transition-all cursor-pointer ${
                                     subTab === 'rpm'
                                         ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
                                         : subTab === 'tiara'
@@ -314,14 +322,13 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
 
                             {isRpmDropdownOpen && (
                                 <div className="absolute left-0 mt-1.5 w-52 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg z-50 overflow-hidden py-1 animate-in fade-in zoom-in-95">
-                                    {/* RPM ANT */}
                                     <button
                                         type="button"
                                         onClick={() => {
                                             handleSubTabSwitch('rpm');
                                             setIsRpmDropdownOpen(false);
                                         }}
-                                        className={`w-full text-left px-3.5 py-2 text-xs font-semibold flex items-center justify-between transition-colors ${
+                                        className={`w-full text-left px-3.5 py-2 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
                                             subTab === 'rpm'
                                                 ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 font-bold'
                                                 : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -336,14 +343,13 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
                                         </span>
                                     </button>
 
-                                    {/* RPM TIARA */}
                                     <button
                                         type="button"
                                         onClick={() => {
                                             handleSubTabSwitch('tiara');
                                             setIsRpmDropdownOpen(false);
                                         }}
-                                        className={`w-full text-left px-3.5 py-2 text-xs font-semibold flex items-center justify-between transition-colors ${
+                                        className={`w-full text-left px-3.5 py-2 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
                                             subTab === 'tiara'
                                                 ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 font-bold'
                                                 : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -371,7 +377,7 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
                                 handleSubTabSwitch('smartkey');
                                 setIsRpmDropdownOpen(false);
                             }}
-                            className={`text-xs font-bold gap-2 transition-all ${
+                            className={`text-xs font-bold gap-2 transition-all cursor-pointer ${
                                 subTab === 'smartkey'
                                     ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
                                     : 'text-slate-600 dark:text-slate-400'
@@ -399,6 +405,23 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
                     onSelectAll={handleSelectAll}
                     onSelectRow={handleSelectRow}
                     getRowNumber={getRowNumber}
+                    statusFilter={statusFilter}
+                    tahunFilter={tahunFilter}
+                    tahunOptions={tahunOptions}
+                    onStatusChange={(val) => {
+                        setStatusFilter(val);
+                        fetchFilteredData(searchTerm, sortOrder, perPage, subTab, 1, val, tahunFilter);
+                    }}
+                    onTahunChange={(val) => {
+                        setTahunFilter(val);
+                        fetchFilteredData(searchTerm, sortOrder, perPage, subTab, 1, statusFilter, val);
+                    }}
+                    onResetFilter={() => {
+                        setStatusFilter('ALL');
+                        setTahunFilter('ALL');
+                        fetchFilteredData(searchTerm, sortOrder, perPage, subTab, 1, 'ALL', 'ALL');
+                    }}
+                    isFilterProcessing={isProcessing}
                 />
             </div>
 
@@ -473,7 +496,7 @@ export default function TabMasterData({ rpmMasters, smartkeyMasters, tiaraMaster
                                     size="sm"
                                     disabled={!link.url || isProcessing}
                                     onClick={() => handlePageChange(link.url)}
-                                    className={`h-8 min-w-[32px] px-2 text-xs font-semibold dark:border-slate-800 ${
+                                    className={`h-8 min-w-[32px] px-2 text-xs font-semibold dark:border-slate-800 cursor-pointer ${
                                         link.active
                                             ? 'bg-blue-600 text-white hover:bg-blue-700'
                                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'

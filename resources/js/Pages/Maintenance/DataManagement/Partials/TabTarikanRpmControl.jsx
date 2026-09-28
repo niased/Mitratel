@@ -53,9 +53,10 @@ export default function useTabTarikanRpmControl(canWrite) {
     const [rpmStats, setRpmStats] = useState(null);
     const [rpmError, setRpmError] = useState(null);
 
-    // State Khusus Data Baru (#N/A)
+    // State Khusus Data Baru (#N/A) & Progress Simpan
     const [previewData, setPreviewData] = useState([]);
     const [isSavingMaster, setIsSavingMaster] = useState(false);
+    const [saveProgressPercent, setSaveProgressPercent] = useState(0);
     const fileRpmInputRef = useRef(null);
 
     const [rpmSteps, setRpmSteps] = useState({
@@ -157,7 +158,6 @@ export default function useTabTarikanRpmControl(canWrite) {
         });
 
         try {
-            // 1. Parsing
             setRpmStatusText('Membaca & mem-parsing berkas CSV...');
             setRpmProgress(8);
             await new Promise(r => setTimeout(r, 180));
@@ -167,13 +167,11 @@ export default function useTabTarikanRpmControl(canWrite) {
             setRpmSteps(prev => ({ ...prev, parse: 'done', filterYear: 'processing' }));
             setRpmProgress(18);
 
-            // 2. Filter Tahun
             setRpmStatusText('Menyaring tahun 2025 & 2026...');
             await new Promise(r => setTimeout(r, 200));
             setRpmSteps(prev => ({ ...prev, filterYear: 'done', cleanRtp: 'processing' }));
             setRpmProgress(30);
 
-            // 3. Normalisasi RTP
             setRpmStatusText('Normalisasi RTP & penghapusan spasi...');
             await new Promise(r => setTimeout(r, 180));
             const { rows, totalRaw, preSkipped } = processRawRowsRPM(rawRows);
@@ -187,7 +185,6 @@ export default function useTabTarikanRpmControl(canWrite) {
 
             setRpmSteps(prev => ({ ...prev, cleanRtp: 'done', xlookup: 'processing' }));
 
-            // 4 & 5. XLOOKUP dan Ekstraksi Khusus Data Baru (#N/A)
             const batchSize = 2500;
             let totalInserted = 0;
             let totalUpdated = 0;
@@ -210,7 +207,6 @@ export default function useTabTarikanRpmControl(canWrite) {
                     totalInserted += res.data.inserted || 0;
                     totalUpdated += res.data.updated || 0;
                     if (Array.isArray(res.data.rows)) {
-                        // Filter langsung HANYA data baru (#N/A)
                         const filteredBatchNew = res.data.rows.filter(r => r.is_new);
                         newRowsOnly.push(...filteredBatchNew);
                     }
@@ -225,7 +221,6 @@ export default function useTabTarikanRpmControl(canWrite) {
             setRpmProgress(100);
             setRpmStatusText(`Selesai! Ditemukan ${newRowsOnly.length.toLocaleString('id-ID')} data baru.`);
             
-            // Simpan HANYA baris data baru ke tabel preview
             setPreviewData(newRowsOnly);
 
             setRpmStats({
@@ -245,21 +240,28 @@ export default function useTabTarikanRpmControl(canWrite) {
         }
     };
 
-    // Tombol Konfirmasi: Memasukkan Seluruh Data Baru (#N/A) ke Master Data
+    // Tombol Konfirmasi dengan kalkulasi persentase real-time
     const handleConfirmSaveMaster = async () => {
         if (previewData.length === 0) return;
         setIsSavingMaster(true);
+        setSaveProgressPercent(0);
 
         try {
             const batchSize = 2500;
+            const totalData = previewData.length;
+            let processed = 0;
             const targetUrl = typeof route === 'function' ? route('maintenance.data-management.process-rpm-batch') : '/maintenance/data-management/process-rpm-batch';
 
-            for (let i = 0; i < previewData.length; i += batchSize) {
+            for (let i = 0; i < totalData; i += batchSize) {
                 const chunk = previewData.slice(i, i + batchSize);
                 await axios.post(targetUrl, { 
                     rows: chunk,
                     preview_only: false
                 });
+
+                processed += chunk.length;
+                const percent = Math.min(Math.round((processed / totalData) * 100), 100);
+                setSaveProgressPercent(percent);
             }
 
             alert(`Berhasil memasukkan ${previewData.length.toLocaleString('id-ID')} data baru ke Master Data RPM!`);
@@ -272,6 +274,7 @@ export default function useTabTarikanRpmControl(canWrite) {
             alert('Terjadi kesalahan saat menyimpan data baru ke database.');
         } finally {
             setIsSavingMaster(false);
+            setSaveProgressPercent(0);
         }
     };
 
@@ -303,6 +306,7 @@ export default function useTabTarikanRpmControl(canWrite) {
         rpmSteps,
         previewData,
         isSavingMaster,
+        saveProgressPercent,
         fileRpmInputRef,
         handleProcessRPM,
         handleConfirmSaveMaster,

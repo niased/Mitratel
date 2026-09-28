@@ -13,37 +13,30 @@ export default function useTabTarikanSmartkeyControl(canWrite) {
     const [skError, setSkError] = useState(null);
     const fileSmartkeyInputRef = useRef(null);
 
-    // State Pratinjau
+    // State Pratinjau & Progress Simpan
     const [previewData, setPreviewData] = useState([]);
     const [isSavingMaster, setIsSavingMaster] = useState(false);
+    const [saveProgressPercent, setSaveProgressPercent] = useState(0);
 
-    // State Langkah Checklist SmartKey
     const [skSteps, setSkSteps] = useState({
         read: 'idle',
         matching: 'idle',
         sync: 'idle',
     });
 
-    /**
-     * Memproses header CSV SmartKey (Lock History maupun Locks / Master Gembok)
-     * Prioritas utama Serial Number: 'Smart Lock SN' -> 'Serial No Hardware'
-     */
     const parseSmartkeyRows = (rawRows) => {
         if (!rawRows || rawRows.length <= 1) return [];
 
-        // Normalisasi header kolom
         const rawHeaders = rawRows[0].map(h => h.replace(/^["']|["']$/g, '').trim());
         const cleanedHeaders = rawHeaders.map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
 
         const findColIdx = (keywords) => {
-            // 1. Pencocokan persis (exact match)
             for (const key of keywords) {
                 const targetKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
                 const exactIdx = cleanedHeaders.indexOf(targetKey);
                 if (exactIdx !== -1) return exactIdx;
             }
 
-            // 2. Pencocokan kata kunci terikat (fuzzy match)
             for (const key of keywords) {
                 const targetKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
                 if (targetKey.length < 2) continue;
@@ -54,13 +47,11 @@ export default function useTabTarikanSmartkeyControl(canWrite) {
             return -1;
         };
 
-        // Identifikasi kolom
         const colLockId   = findColIdx(['lockid', 'idlock', 'kunciid', 'idkunci', 'lockno']);
         
-        // Prioritas utama: 'Smart Lock SN', diikuti 'Serial No Hardware'
         const colSn       = findColIdx([
-            'smartlocksn',       // Prioritas 1: "Smart Lock SN"
-            'serialnohardware',  // Prioritas 2: "Serial No Hardware"
+            'smartlocksn',
+            'serialnohardware',
             'nohardware', 
             'hardwareid', 
             'hardwaresn',
@@ -75,7 +66,6 @@ export default function useTabTarikanSmartkeyControl(canWrite) {
         const colSiteName = findColIdx(['sitename', 'namasite', 'namatower', 'towername', 'site']);
         const colStatus   = findColIdx(['statusaktifitas', 'statusaktivitas', 'lockstatus', 'status', 'aktifitas', 'state', 'lockstate']);
 
-        // Koordinat GPS
         const colLongLat  = findColIdx(['longlat', 'latlong', 'coordinate', 'coordinates', 'location', 'koordinat', 'gps', 'position']);
         const colLat      = findColIdx(['latitude', 'lat']);
         const colLng      = findColIdx(['longitude', 'long', 'lng']);
@@ -95,12 +85,10 @@ export default function useTabTarikanSmartkeyControl(canWrite) {
 
             if (!rawLockId && !rawSn) continue;
 
-            // Kunci unik gabungan
             const uniqueKey = `${rawSn}_${rawLockId}`;
             if (seenKeys.has(uniqueKey)) continue;
             seenKeys.add(uniqueKey);
 
-            // Fallback saling isi HANYA jika salah satu kosong
             if (!rawSn && rawLockId) rawSn = rawLockId;
             if (!rawLockId && rawSn) rawLockId = rawSn;
 
@@ -110,7 +98,6 @@ export default function useTabTarikanSmartkeyControl(canWrite) {
             rawTowerId  = rawTowerId.replace(/^["']|["']$/g, '').trim().slice(0, 100);
             rawSiteName = rawSiteName.replace(/^["']|["']$/g, '').trim().slice(0, 255);
 
-            // Ekstraksi Koordinat GPS
             let cleanLongLat = '';
             if (colLongLat !== -1 && cells[colLongLat]) {
                 const val = cells[colLongLat].replace(/^["']|["']$/g, '').trim();
@@ -218,16 +205,19 @@ export default function useTabTarikanSmartkeyControl(canWrite) {
         if (previewData.length === 0) return;
 
         setIsSavingMaster(true);
+        setSaveProgressPercent(0);
+
         try {
             const targetUrl = typeof route === 'function'
                 ? route('maintenance.data-management.process-smartkey-batch')
                 : '/maintenance/data-management/process-smartkey-batch';
 
-            // Menggunakan batch size 50 agar setiap request terkirim cepat dan aman dari timeout
-            const batchSize = 50;
+            const batchSize = 100;
+            const totalData = previewData.length;
+            let processed = 0;
             let totalSynced = 0;
 
-            for (let i = 0; i < previewData.length; i += batchSize) {
+            for (let i = 0; i < totalData; i += batchSize) {
                 const chunk = previewData.slice(i, i + batchSize).map(item => ({
                     lock_id: item.lock_id,
                     serial_number: item.serial_number,
@@ -241,6 +231,10 @@ export default function useTabTarikanSmartkeyControl(canWrite) {
                 if (response.data) {
                     totalSynced += response.data.synced || 0;
                 }
+
+                processed += chunk.length;
+                const percent = Math.min(Math.round((processed / totalData) * 100), 100);
+                setSaveProgressPercent(percent);
             }
 
             alert(`Berhasil memperbarui ${totalSynced.toLocaleString('id-ID')} data Smart Key ke Master!`);
@@ -260,6 +254,7 @@ export default function useTabTarikanSmartkeyControl(canWrite) {
             alert(errorMsg);
         } finally {
             setIsSavingMaster(false);
+            setSaveProgressPercent(0);
         }
     };
 
@@ -290,6 +285,7 @@ export default function useTabTarikanSmartkeyControl(canWrite) {
         skSteps,
         previewData,
         isSavingMaster,
+        saveProgressPercent,
         fileSmartkeyInputRef,
         handleProcessSmartkey,
         handleConfirmSaveMaster,

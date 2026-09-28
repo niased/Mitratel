@@ -233,9 +233,9 @@ export default function TabelRpm({ monthlyPivot = {}, rtpPivot = [], regionalPiv
         <Card className="bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
           <CardHeader className="pb-3 pt-4 px-5 border-b border-slate-100 dark:border-slate-800/50">
             <div className="flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-rose-500" />
+              <Building2 className="w-4 h-4 text-slate-400" />
               <CardTitle className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                Tabel Pivot Regional (Bulanan)
+                Tabel Pivot Regional per Bulan
               </CardTitle>
             </div>
           </CardHeader>

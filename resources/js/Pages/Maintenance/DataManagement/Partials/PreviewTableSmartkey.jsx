@@ -15,6 +15,7 @@ import Tabel from '@/components/Tabel';
 export default function PreviewTableSmartkey({ 
     previewData = [], 
     isSavingMaster = false, 
+    saveProgressPercent = 0,
     onConfirmSave, 
     onCancel 
 }) {
@@ -176,33 +177,49 @@ export default function PreviewTableSmartkey({
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2.5">
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={onCancel}
-                        disabled={isSavingMaster}
-                        className="h-8 text-xs font-semibold gap-1.5 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                    >
-                        <Ban className="w-3.5 h-3.5 text-rose-500" />
-                        <span>Batal</span>
-                    </Button>
+                <div className="flex flex-col items-end gap-1.5">
+                    <div className="flex items-center gap-2.5">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={onCancel}
+                            disabled={isSavingMaster}
+                            className="h-8 text-xs font-semibold gap-1.5 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                        >
+                            <Ban className="w-3.5 h-3.5 text-rose-500" />
+                            <span>Batal</span>
+                        </Button>
 
-                    <Button
-                        type="button"
-                        size="sm"
-                        onClick={onConfirmSave}
-                        disabled={isSavingMaster}
-                        className="h-8 text-xs font-bold gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer"
-                    >
-                        {isSavingMaster ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
-                        )}
-                        <span>{isSavingMaster ? 'Menyimpan...' : 'Masukkan ke Master Data SmartKey'}</span>
-                    </Button>
+                        <Button
+                            type="button"
+                            size="sm"
+                            onClick={onConfirmSave}
+                            disabled={isSavingMaster}
+                            className="h-8 text-xs font-bold gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer min-w-[210px] justify-center transition-all"
+                        >
+                            {isSavingMaster ? (
+                                <>
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    <span>Menyimpan ({saveProgressPercent}%)...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                    <span>Masukkan ke Master Data SmartKey</span>
+                                </>
+                            )}
+                        </Button>
+                    </div>
+
+                    {isSavingMaster && (
+                        <div className="w-full max-w-[210px] h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                            <div 
+                                className="h-full bg-emerald-500 transition-all duration-300 rounded-full" 
+                                style={{ width: `${saveProgressPercent}%` }} 
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
 

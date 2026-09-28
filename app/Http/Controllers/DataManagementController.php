@@ -25,7 +25,7 @@ class DataManagementController extends Controller
     }
 
     // ==========================================
-    // METHOD INDEX
+    // METHOD INDEX (FILTER STATUS & TAHUN)
     // ==========================================
 
     public function index(Request $request)
@@ -33,6 +33,8 @@ class DataManagementController extends Controller
         $search  = $request->input('search');
         $perPage = (int)$request->input('per_page', 10);
         $order   = $request->input('order', 'asc');
+        $status  = $request->input('status', 'ALL');
+        $tahun   = $request->input('tahun', 'ALL');
 
         $order = in_array(strtolower($order), ['asc', 'desc'], true) ? strtolower($order) : 'asc';
 
@@ -47,6 +49,28 @@ class DataManagementController extends Controller
                   ->orWhere('approve', 'like', "%{$search}%");
             });
         }
+
+        // Filter Status RPM (ANT)
+        if ($status && strtoupper($status) !== 'ALL') {
+            $st = strtoupper($status);
+            if ($st === 'APPROVED' || $st === 'OK') {
+                $rpmQuery->whereRaw("LOWER(TRIM(COALESCE(approve, ''))) IN ('ok', 'approved', 'approve')", [], 'and');
+            } elseif ($st === 'REJECTED' || $st === 'REJECT') {
+                $rpmQuery->whereRaw("(LOWER(TRIM(COALESCE(approve, ''))) IN ('reject', 'nok') OR LOWER(TRIM(COALESCE(approve, ''))) LIKE '%reject%')", [], 'and');
+            } elseif ($st === 'RETURNED' || $st === 'RETURN') {
+                $rpmQuery->whereRaw("(LOWER(TRIM(COALESCE(approve, ''))) IN ('return', 'revisi') OR LOWER(TRIM(COALESCE(approve, ''))) LIKE '%return%' OR LOWER(TRIM(COALESCE(approve, ''))) LIKE '%revisi%')", [], 'and');
+            } elseif ($st === 'PENDING' || $st === 'BELUM') {
+                $rpmQuery->whereRaw("NOT (LOWER(TRIM(COALESCE(approve, ''))) IN ('ok', 'approved', 'approve')) AND NOT (LOWER(TRIM(COALESCE(approve, ''))) IN ('reject', 'nok') OR LOWER(TRIM(COALESCE(approve, ''))) LIKE '%reject%') AND NOT (LOWER(TRIM(COALESCE(approve, ''))) IN ('return', 'revisi') OR LOWER(TRIM(COALESCE(approve, ''))) LIKE '%return%' OR LOWER(TRIM(COALESCE(approve, ''))) LIKE '%revisi%')", [], 'and');
+            } else {
+                $rpmQuery->where('approve', '=', $status);
+            }
+        }
+
+        // Filter Tahun RPM (ANT)
+        if ($tahun && strtoupper($tahun) !== 'ALL') {
+            $rpmQuery->where('tahun', '=', $tahun);
+        }
+
         $rpmMasters = $rpmQuery->orderBy('id', $order)
                                ->paginate($perPage, ['*'], 'rpm_page')
                                ->withQueryString();
@@ -63,6 +87,34 @@ class DataManagementController extends Controller
                   ->orWhere('dashboard_status', 'like', "%{$search}%");
             });
         }
+
+        // Filter Status RPM (TIARA)
+        if ($status && strtoupper($status) !== 'ALL') {
+            $st = strtoupper($status);
+            if ($st === 'APPROVED' || $st === 'OK') {
+                $tiaraQuery->whereIn('dashboard_status', ['APPROVED', 'OK', 'DONE']);
+            } elseif ($st === 'REJECTED' || $st === 'REJECT') {
+                $tiaraQuery->whereIn('dashboard_status', ['REJECTED', 'REJECT']);
+            } elseif ($st === 'RETURNED' || $st === 'RETURN') {
+                $tiaraQuery->whereIn('dashboard_status', ['RETURNED', 'RETURN']);
+            } elseif ($st === 'PENDING' || $st === 'BELUM') {
+                $tiaraQuery->where(function($q) {
+                    $q->whereNotIn('dashboard_status', ['APPROVED', 'OK', 'DONE', 'REJECTED', 'REJECT', 'RETURNED', 'RETURN'])
+                      ->orWhereNull('dashboard_status');
+                });
+            } else {
+                $tiaraQuery->where('dashboard_status', '=', $status);
+            }
+        }
+
+        // Filter Tahun RPM (TIARA)
+        if ($tahun && strtoupper($tahun) !== 'ALL') {
+            $tiaraQuery->where(function ($q) use ($tahun) {
+                $q->where('maintenance_date', 'like', "%{$tahun}%")
+                  ->orWhere('created_at', 'like', "%{$tahun}%");
+            });
+        }
+
         $tiaraMasters = $tiaraQuery->orderBy('id', $order)
                                    ->paginate($perPage, ['*'], 'tiara_page')
                                    ->withQueryString();
@@ -83,16 +135,34 @@ class DataManagementController extends Controller
                                          ->paginate($perPage, ['*'], 'smartkey_page')
                                          ->withQueryString();
 
+       // Opsi Tahun Dinamis
+        $tahunOptions = array_values(array_unique(array_filter(array_merge(
+            RpmMaster::query()
+                ->whereNotNull('tahun', 'and')
+                ->where('tahun', '!=', '')
+                ->distinct()
+                ->pluck('tahun')
+                ->toArray(),
+            ['2025', '2026']
+        ))));
+        sort($tahunOptions);
+
         return Inertia::render('Maintenance/DataManagement/Index', [
             'rpmMasters'      => $rpmMasters,
             'tiaraMasters'    => $tiaraMasters,
             'smartkeyMasters' => $smartkeyMasters,
             'summary'         => [
-                'total_rpm'      => RpmMaster::count('id'),
-                'total_tiara'    => RpmTiaraMaster::count('id'),
-                'total_smartkey' => SmartkeyMaster::count('id'),
+                'total_rpm'      => DB::table('rpm_masters')->count(),
+                'total_tiara'    => DB::table('rpm_tiara_masters')->count(),
+                'total_smartkey' => DB::table('smartkey_masters')->count(),
             ],
-            'filters'         => $request->only(['search', 'per_page', 'order', 'tab']),
+            'filters'         => array_merge(
+                $request->only(['search', 'per_page', 'order', 'tab']),
+                ['status' => $status, 'tahun' => $tahun]
+            ),
+            'filterOptions'   => [
+                'tahun' => $tahunOptions,
+            ]
         ]);
     }
 

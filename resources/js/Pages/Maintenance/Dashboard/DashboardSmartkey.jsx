@@ -1,119 +1,14 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { router } from '@inertiajs/react';
-import {
-    DropdownMenu,
-    DropdownMenuTrigger,
-    DropdownMenuContent,
-    DropdownMenuCheckboxItem,
-    DropdownMenuSearchInput
-} from '@/components/ui/dropdown-menu';
-import { Filter, ChevronDown, Image as ImageIcon, Loader2, RotateCcw } from 'lucide-react';
+import { Filter, Image as ImageIcon, Loader2, RotateCcw } from 'lucide-react';
 import { toPng } from 'html-to-image';
+
+import HybridDropdown from '@/components/HybridDropdown';
 
 // Import Sub-Komponen
 import StatistikSmartkey from './StatistikSmartkey';
 import TabelSmartkey from './TabelSmartkey';
 
-// --- SUB-KOMPONEN MULTI-SELECT FILTER ---
-function FilterMultiSelect({ 
-    options = [], 
-    selectedValues = [], 
-    onChange, 
-    placeholder = "Pilih...", 
-    searchPlaceholder = "Cari..." 
-}) {
-    const [search, setSearch] = useState('');
-    const showSearch = options.length > 5;
-
-    const filteredOptions = useMemo(() => {
-        if (!search.trim()) return options;
-        const q = search.toLowerCase();
-        return options.filter((opt) => String(opt).toLowerCase().includes(q));
-    }, [options, search]);
-
-    const handleToggle = (opt) => {
-        if (selectedValues.includes(opt)) {
-            onChange(selectedValues.filter((item) => item !== opt));
-        } else {
-            onChange([...selectedValues, opt]);
-        }
-    };
-
-    const handleSelectAll = () => {
-        if (selectedValues.length === options.length) {
-            onChange([]);
-        } else {
-            onChange([...options]);
-        }
-    };
-
-    const getTriggerLabel = () => {
-        if (selectedValues.length === 0) return placeholder;
-        if (selectedValues.length === 1) return selectedValues[0];
-        return `${selectedValues.length} Terpilih`;
-    };
-
-    return (
-        <DropdownMenu onOpenChange={(open) => { if (!open) setSearch(''); }}>
-            <DropdownMenuTrigger className="w-full bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 h-9 px-3 rounded-lg flex items-center justify-between text-xs font-medium hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors focus:outline-none focus:ring-1 focus:ring-slate-300 dark:focus:ring-slate-700 shadow-sm">
-                <span className="truncate font-normal">{getTriggerLabel()}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-2" />
-            </DropdownMenuTrigger>
-
-            <DropdownMenuContent className="w-56 max-h-64 overflow-y-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 z-50 shadow-md p-1">
-                {showSearch && (
-                    <DropdownMenuSearchInput
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        onKeyDown={(e) => e.stopPropagation()}
-                        placeholder={searchPlaceholder}
-                        className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 mb-1"
-                    />
-                )}
-
-                <div className="flex items-center justify-between px-2 py-1 mb-1 border-b border-slate-100 dark:border-slate-800 text-[11px]">
-                    <button
-                        type="button"
-                        onClick={handleSelectAll}
-                        className="text-sky-600 dark:text-sky-400 hover:underline font-medium cursor-pointer"
-                    >
-                        {selectedValues.length === options.length ? "Batal Semua" : "Pilih Semua"}
-                    </button>
-                    {selectedValues.length > 0 && (
-                        <button
-                            type="button"
-                            onClick={() => onChange([])}
-                            className="text-slate-400 hover:text-rose-500 font-medium transition-colors cursor-pointer"
-                        >
-                            Reset
-                        </button>
-                    )}
-                </div>
-
-                {filteredOptions.length === 0 ? (
-                    <div className="px-3 py-3 text-xs text-slate-400 dark:text-slate-500 text-center">Tidak ditemukan</div>
-                ) : (
-                    filteredOptions.map((opt) => {
-                        const isChecked = selectedValues.includes(opt);
-                        return (
-                            <DropdownMenuCheckboxItem
-                                key={opt}
-                                checked={isChecked}
-                                onSelect={(e) => e.preventDefault()}
-                                onCheckedChange={() => handleToggle(opt)}
-                                className="text-xs py-1.5 cursor-pointer text-slate-700 dark:text-slate-200 focus:bg-slate-100 dark:focus:bg-slate-800/60"
-                            >
-                                <span className="truncate">{opt}</span>
-                            </DropdownMenuCheckboxItem>
-                        );
-                    })
-                )}
-            </DropdownMenuContent>
-        </DropdownMenu>
-    );
-}
-
-// --- MAIN DASHBOARD CONTAINER SMARTKEY ---
 export default function DashboardSmartkey({ 
     summary = {}, 
     tableData = [], 
@@ -123,19 +18,34 @@ export default function DashboardSmartkey({
     const [isExporting, setIsExporting] = useState(false);
     const dashboardRef = useRef(null);
 
-    // Opsi dropdown
+    // Opsi asal
     const listInfrako = options.infrako || [];
     const listStatus = options.status || [];
     const listSN = options.sn || [];
 
-    // State filter dari URL
-    const selectedInfrako = filters.infrako || [];
-    const selectedStatus = filters.status || [];
-    const selectedSN = filters.sn || [];
+    // Formatter Opsi HybridDropdown
+    const infrakoOptions = useMemo(() => [
+        { value: 'ALL', label: 'Semua Infrako' },
+        ...(listInfrako || []).map(i => ({ value: String(i), label: String(i) }))
+    ], [listInfrako]);
 
-    const isFiltered = selectedInfrako.length > 0 || selectedStatus.length > 0 || selectedSN.length > 0;
+    const statusOptions = useMemo(() => [
+        { value: 'ALL', label: 'Semua Status Unit' },
+        ...(listStatus || []).map(s => ({ value: String(s), label: String(s) }))
+    ], [listStatus]);
 
-    // Deteksi data tabel dari prop direct atau dari dalam summary
+    const snOptions = useMemo(() => [
+        { value: 'ALL', label: 'Semua Serial Number' },
+        ...(listSN || []).map(sn => ({ value: String(sn), label: String(sn) }))
+    ], [listSN]);
+
+    // State filter terpilih
+    const selectedInfrako = Array.isArray(filters.infrako) ? (filters.infrako[0] || 'ALL') : (filters.infrako || 'ALL');
+    const selectedStatus = Array.isArray(filters.status) ? (filters.status[0] || 'ALL') : (filters.status || 'ALL');
+    const selectedSN = Array.isArray(filters.sn) ? (filters.sn[0] || 'ALL') : (filters.sn || 'ALL');
+
+    const isFiltered = selectedInfrako !== 'ALL' || selectedStatus !== 'ALL' || selectedSN !== 'ALL';
+
     const resolvedTableData = useMemo(() => {
         if (Array.isArray(tableData) && tableData.length > 0) return tableData;
         if (summary?.table_data) return summary.table_data;
@@ -144,13 +54,17 @@ export default function DashboardSmartkey({
         return tableData;
     }, [tableData, summary]);
 
-    const handleFilterChange = (key, values) => {
+    const handleFilterChange = (key, value) => {
+        const updatedFilters = { ...filters };
+        if (value === 'ALL' || !value) {
+            delete updatedFilters[key];
+        } else {
+            updatedFilters[key] = value;
+        }
+
         router.get(
             window.location.pathname,
-            {
-                ...filters,
-                [key]: values
-            },
+            updatedFilters,
             {
                 preserveState: true,
                 preserveScroll: true,
@@ -186,8 +100,8 @@ export default function DashboardSmartkey({
             });
 
             const link = document.createElement('a');
-            const infraName = selectedInfrako.length === 0 ? 'Semua' : selectedInfrako.join('-');
-            const statusName = selectedStatus.length === 0 ? 'Semua' : selectedStatus.join('-');
+            const infraName = selectedInfrako === 'ALL' ? 'Semua' : selectedInfrako;
+            const statusName = selectedStatus === 'ALL' ? 'Semua' : selectedStatus;
             const fileName = `Dashboard_SmartKey_${infraName}_${statusName}_${new Date().toISOString().slice(0,10)}.png`;
             
             link.download = fileName;
@@ -233,39 +147,46 @@ export default function DashboardSmartkey({
                     <div className="h-4 w-[1px] bg-slate-200 dark:bg-slate-800 hidden sm:block" />
                     
                     <div className="w-full sm:w-48">
-                        <FilterMultiSelect
-                            options={listInfrako} 
-                            selectedValues={selectedInfrako} 
+                        <HybridDropdown
+                            value={selectedInfrako}
+                            options={infrakoOptions}
                             onChange={(val) => handleFilterChange('infrako', val)}
-                            placeholder="Semua Infrako" 
+                            placeholder="Semua Infrako"
                             searchPlaceholder="Cari Infrako..."
+                            allowCustom={false}
+                            className="text-xs font-semibold"
                         />
                     </div>
 
                     <div className="w-full sm:w-44">
-                        <FilterMultiSelect
-                            options={listStatus} 
-                            selectedValues={selectedStatus} 
+                        <HybridDropdown
+                            value={selectedStatus}
+                            options={statusOptions}
                             onChange={(val) => handleFilterChange('status', val)}
-                            placeholder="Semua Status Unit" 
+                            placeholder="Semua Status Unit"
                             searchPlaceholder="Cari Status..."
+                            allowCustom={false}
+                            className="text-xs font-semibold"
                         />
                     </div>
 
                     <div className="w-full sm:w-52">
-                        <FilterMultiSelect
-                            options={listSN}
-                            selectedValues={selectedSN}
+                        <HybridDropdown
+                            value={selectedSN}
+                            options={snOptions}
                             onChange={(val) => handleFilterChange('sn', val)}
                             placeholder="Semua Serial Number"
                             searchPlaceholder="Cari Serial Number..."
+                            allowCustom={false}
+                            className="text-xs font-semibold"
                         />
                     </div>
 
                     {isFiltered && (
                         <button
+                            type="button"
                             onClick={handleResetAllFilters}
-                            className="flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400 hover:underline font-medium px-2 py-1 rounded-md hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                            className="flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400 hover:underline font-medium px-2 py-1 rounded-md hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
                         >
                             <RotateCcw className="w-3 h-3" />
                             <span>Reset Filter</span>
@@ -275,6 +196,7 @@ export default function DashboardSmartkey({
 
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                     <button
+                        type="button"
                         onClick={handleDownloadDashboardImage}
                         disabled={isExporting}
                         className="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 disabled:bg-sky-400 dark:disabled:bg-sky-900 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all shadow-md shadow-sky-600/20 dark:shadow-sky-950/40 cursor-pointer"
@@ -300,7 +222,7 @@ export default function DashboardSmartkey({
                     <div>
                         <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Dashboard SmartKey</h2>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                            Filter: Region Infrako ({selectedInfrako.length === 0 ? 'Semua' : selectedInfrako.join(', ')}) | Status Unit ({selectedStatus.length === 0 ? 'Semua' : selectedStatus.join(', ')}) | Serial Number ({selectedSN.length === 0 ? 'Semua' : selectedSN.join(', ')})
+                            Filter: Region Infrako ({selectedInfrako === 'ALL' ? 'Semua' : selectedInfrako}) | Status Unit ({selectedStatus === 'ALL' ? 'Semua' : selectedStatus}) | Serial Number ({selectedSN === 'ALL' ? 'Semua' : selectedSN})
                         </p>
                     </div>
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
@@ -308,10 +230,7 @@ export default function DashboardSmartkey({
                     </span>
                 </div>
 
-                {/* 1. SEKSI STATISTIK & MAP */}
                 <StatistikSmartkey summary={summary} />
-
-                {/* 2. SEKSI TABEL PIVOT KSM (Hanya dipanggil sekali di sini) */}
                 <TabelSmartkey tableData={resolvedTableData} />
             </div>
         </div>

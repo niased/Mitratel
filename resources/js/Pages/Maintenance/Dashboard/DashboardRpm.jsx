@@ -1,75 +1,22 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import {
-    DropdownMenu,
-    DropdownMenuTrigger,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSearchInput
-} from '@/components/ui/dropdown-menu';
-import { Filter, ChevronDown, Check, Image as ImageIcon, Loader2, RotateCcw, Activity } from 'lucide-react';
+import { Filter, Image as ImageIcon, Loader2, RotateCcw, Activity } from 'lucide-react';
 import { toPng } from 'html-to-image';
+
+import HybridDropdown from '@/components/HybridDropdown';
 
 // Import Sub-Komponen
 import StatistikRpm from './StatistikRpm';
 import GrafikRpm from './GrafikRpm';
 import TabelRpm from './TabelRpm';
 
-// --- SUB-KOMPONEN FILTER SELECT ---
-function FilterSelect({ options = [], value, onChange, placeholder = "Pilih...", searchPlaceholder = "Cari...", formatLabel }) {
-    const [search, setSearch] = useState('');
-    const showSearch = options.length > 10;
-    const filteredOptions = options.filter((opt) => {
-        if (!search.trim() || !showSearch) return true;
-        const label = formatLabel ? formatLabel(opt) : (opt === 'ALL' ? placeholder : String(opt));
-        return label.toLowerCase().includes(search.toLowerCase());
-    });
-    const currentLabel = formatLabel ? formatLabel(value) : (value === 'ALL' ? placeholder : value);
-
-    return (
-        <DropdownMenu onOpenChange={(open) => { if (!open) setSearch(''); }}>
-            <DropdownMenuTrigger className="w-full bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 h-9 px-3 rounded-lg flex items-center justify-between text-xs font-medium hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors focus:outline-none focus:ring-1 focus:ring-slate-300 dark:focus:ring-slate-700 shadow-sm">
-                <span className="truncate font-semibold">{currentLabel}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-2" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56 max-h-60 overflow-y-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 z-50 shadow-md">
-                {showSearch && (
-                    <DropdownMenuSearchInput
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder={searchPlaceholder}
-                        className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200"
-                    />
-                )}
-                {filteredOptions.length === 0 ? (
-                    <div className="px-3 py-3 text-xs text-slate-400 dark:text-slate-500 text-center">Tidak ditemukan</div>
-                ) : (
-                    filteredOptions.map((opt) => {
-                        const isSelected = value === opt;
-                        const itemLabel = formatLabel ? formatLabel(opt) : (opt === 'ALL' ? placeholder : opt);
-                        return (
-                            <DropdownMenuItem
-                                key={opt}
-                                onClick={() => onChange(opt)}
-                                className={`flex items-center justify-between text-xs cursor-pointer px-3 py-2 rounded-md transition-colors ${
-                                    isSelected
-                                        ? "text-rose-600 dark:text-rose-400 font-semibold bg-rose-50 dark:bg-slate-800/50"
-                                        : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50"
-                                }`}
-                            >
-                                <span className="truncate">{itemLabel}</span>
-                                {isSelected && <Check className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0 ml-1" />}
-                            </DropdownMenuItem>
-                        );
-                    })
-                )}
-            </DropdownMenuContent>
-        </DropdownMenu>
-    );
-}
-
-// --- MAIN DASHBOARD CONTAINER ---
-export default function DashboardRpm({ summary = {}, options = {}, filters = {}, title = "Performa RPM", description = "Ringkasan aktivitas & performa RPM" }) {
+export default function DashboardRpm({ 
+    summary = {}, 
+    options = {}, 
+    filters = {}, 
+    title = "Performa RPM", 
+    description = "Ringkasan aktivitas & performa RPM" 
+}) {
     const [isExporting, setIsExporting] = useState(false);
     const dashboardRef = useRef(null);
 
@@ -77,26 +24,22 @@ export default function DashboardRpm({ summary = {}, options = {}, filters = {},
     const pageProps = usePage().props || {};
     const inertiaFilters = pageProps.filters || {};
 
-    // Helper untuk membaca nilai filter aktif dari 4 sumber sekaligus (Props -> Inertia -> Summary -> URL Browser)
+    // Helper untuk membaca nilai filter aktif dari 4 sumber sekaligus
     const getActiveFilterValue = (...keys) => {
-        // 1. Cek dari direct props filters
         for (const k of keys) {
             if (filters && filters[k] && filters[k] !== 'ALL') return filters[k];
         }
-        // 2. Cek dari Inertia Page Props
         for (const k of keys) {
             if (inertiaFilters[k] && inertiaFilters[k] !== 'ALL') return inertiaFilters[k];
             if (inertiaFilters.rpmAll && inertiaFilters.rpmAll[k] && inertiaFilters.rpmAll[k] !== 'ALL') return inertiaFilters.rpmAll[k];
             if (inertiaFilters.rpm && inertiaFilters.rpm[k] && inertiaFilters.rpm[k] !== 'ALL') return inertiaFilters.rpm[k];
             if (inertiaFilters.tiara && inertiaFilters.tiara[k] && inertiaFilters.tiara[k] !== 'ALL') return inertiaFilters.tiara[k];
         }
-        // 3. Cek dari summary.filters
         if (summary && summary.filters) {
             for (const k of keys) {
                 if (summary.filters[k] && summary.filters[k] !== 'ALL') return summary.filters[k];
             }
         }
-        // 4. Fallback langsung dari URL Query Parameter Browser
         if (typeof window !== 'undefined' && window.location.search) {
             const urlParams = new URLSearchParams(window.location.search);
             for (const k of keys) {
@@ -122,13 +65,28 @@ export default function DashboardRpm({ summary = {}, options = {}, filters = {},
         return [];
     };
 
-    // Opsi Pilihan Dropdown
-    const listTahun    = ['ALL', ...getOptionsList('tahun', ['year'])];
-    const listRegional = ['ALL', ...getOptionsList('regional', ['sitearea_reg', 'reg'])];
-    const listRtp      = ['ALL', ...getOptionsList('rtp', ['sitearea_to', 'to'])];
-    const listSiteId   = ['ALL', ...getOptionsList('site_id', ['siteid', 'site_code'])];
+    // Formatter Opsi Pilihan HybridDropdown
+    const tahunOptions = useMemo(() => [
+        { value: 'ALL', label: 'Semua Tahun' },
+        ...getOptionsList('tahun', ['year']).map(t => ({ value: String(t), label: `Tahun ${t}` }))
+    ], [options, summary]);
 
-    // State Filter Terpilih secara Presisi
+    const regionalOptions = useMemo(() => [
+        { value: 'ALL', label: 'Semua Regional' },
+        ...getOptionsList('regional', ['sitearea_reg', 'reg']).map(r => ({ value: String(r), label: String(r) }))
+    ], [options, summary]);
+
+    const rtpOptions = useMemo(() => [
+        { value: 'ALL', label: 'Semua RTP/Area' },
+        ...getOptionsList('rtp', ['sitearea_to', 'to']).map(to => ({ value: String(to), label: String(to) }))
+    ], [options, summary]);
+
+    const siteIdOptions = useMemo(() => [
+        { value: 'ALL', label: 'Semua Site ID' },
+        ...getOptionsList('site_id', ['siteid', 'site_code']).map(s => ({ value: String(s), label: String(s) }))
+    ], [options, summary]);
+
+    // State Filter Terpilih
     const selectedTahun    = getActiveFilterValue('tahun', 'year');
     const selectedRegional = getActiveFilterValue('regional', 'sitearea_reg', 'reg');
     const selectedRtp      = getActiveFilterValue('rtp', 'sitearea_to', 'to');
@@ -139,7 +97,6 @@ export default function DashboardRpm({ summary = {}, options = {}, filters = {},
     const handleFilterChange = (key, value) => {
         const newParams = {};
 
-        // Pertahankan filter aktif yang ada
         if (selectedTahun !== 'ALL') newParams.tahun = selectedTahun;
         if (selectedRegional !== 'ALL') {
             newParams.regional = selectedRegional;
@@ -151,7 +108,6 @@ export default function DashboardRpm({ summary = {}, options = {}, filters = {},
             newParams.siteid = selectedSiteId;
         }
 
-        // Terapkan nilai filter baru
         if (key === 'tahun') newParams.tahun = value;
         if (key === 'regional') {
             newParams.regional = value;
@@ -164,9 +120,8 @@ export default function DashboardRpm({ summary = {}, options = {}, filters = {},
             newParams.siteid = value;
         }
 
-        // Hapus parameter ber-nilai 'ALL'
         Object.keys(newParams).forEach(k => {
-            if (newParams[k] === 'ALL') delete newParams[k];
+            if (newParams[k] === 'ALL' || !newParams[k]) delete newParams[k];
         });
 
         router.get(
@@ -188,7 +143,6 @@ export default function DashboardRpm({ summary = {}, options = {}, filters = {},
         );
     };
 
-    // EXPORT PNG SNAPSHOT
     const handleDownloadDashboardImage = async () => {
         if (!dashboardRef.current) return;
         setIsExporting(true);
@@ -228,7 +182,6 @@ export default function DashboardRpm({ summary = {}, options = {}, filters = {},
                 }
             `}</style>
 
-            {/* HEADER DASHBOARD & TOMBOL DOWNLOAD PNG (POJOK KANAN ATAS DI LUAR CARD FILTER) */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
                 <div>
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -270,49 +223,53 @@ export default function DashboardRpm({ summary = {}, options = {}, filters = {},
 
                     {/* 1. FILTER TAHUN */}
                     <div className="w-full sm:w-36">
-                        <FilterSelect
-                            options={listTahun} 
-                            value={selectedTahun} 
+                        <HybridDropdown
+                            value={selectedTahun}
+                            options={tahunOptions}
                             onChange={(val) => handleFilterChange('tahun', val)}
-                            placeholder="Semua Tahun" 
+                            placeholder="Semua Tahun"
                             searchPlaceholder="Cari tahun..."
-                            formatLabel={(t) => t === 'ALL' ? 'Semua Tahun' : `Tahun ${t}`}
+                            allowCustom={false}
+                            className="text-xs font-semibold"
                         />
                     </div>
 
                     {/* 2. FILTER REGIONAL */}
                     <div className="w-full sm:w-44">
-                        <FilterSelect
-                            options={listRegional} 
-                            value={selectedRegional} 
+                        <HybridDropdown
+                            value={selectedRegional}
+                            options={regionalOptions}
                             onChange={(val) => handleFilterChange('regional', val)}
-                            placeholder="Semua Regional" 
+                            placeholder="Semua Regional"
                             searchPlaceholder="Cari Regional..."
-                            formatLabel={(r) => r === 'ALL' ? 'Semua Regional' : r}
+                            allowCustom={false}
+                            className="text-xs font-semibold"
                         />
                     </div>
 
                     {/* 3. FILTER RTP / AREA */}
                     <div className="w-full sm:w-48">
-                        <FilterSelect
-                            options={listRtp} 
-                            value={selectedRtp} 
+                        <HybridDropdown
+                            value={selectedRtp}
+                            options={rtpOptions}
                             onChange={(val) => handleFilterChange('rtp', val)}
-                            placeholder="Semua RTP/Area" 
+                            placeholder="Semua RTP/Area"
                             searchPlaceholder="Cari RTP / Area..."
-                            formatLabel={(to) => to === 'ALL' ? 'Semua RTP/Area' : to}
+                            allowCustom={false}
+                            className="text-xs font-semibold"
                         />
                     </div>
 
                     {/* 4. FILTER SITE ID */}
                     <div className="w-full sm:w-44">
-                        <FilterSelect
-                            options={listSiteId} 
-                            value={selectedSiteId} 
+                        <HybridDropdown
+                            value={selectedSiteId}
+                            options={siteIdOptions}
                             onChange={(val) => handleFilterChange('site_id', val)}
-                            placeholder="Semua Site ID" 
+                            placeholder="Semua Site ID"
                             searchPlaceholder="Cari Site ID..."
-                            formatLabel={(s) => s === 'ALL' ? 'Semua Site ID' : s}
+                            allowCustom={false}
+                            className="text-xs font-semibold"
                         />
                     </div>
 
@@ -344,13 +301,8 @@ export default function DashboardRpm({ summary = {}, options = {}, filters = {},
                     </span>
                 </div>
 
-                {/* 1. SEKSI KARTU STATISTIK KPI */}
                 <StatistikRpm summary={summary} />
-
-                {/* 2. SEKSI GRAFIK RPM */}
                 <GrafikRpm summary={summary} />
-
-                {/* 3. SEKSI TABEL PIVOT */}
                 <TabelRpm 
                     monthlyPivot={summary.monthlyPivot || {}} 
                     rtpPivot={summary.rtpPivot || []} 

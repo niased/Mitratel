@@ -167,6 +167,7 @@ export default function TabDataTarikan() {
                 <PreviewTableRpm
                     previewData={rpmControl.previewData}
                     isSavingMaster={rpmControl.isSavingMaster}
+                    saveProgressPercent={rpmControl.saveProgressPercent}
                     onConfirmSave={rpmControl.handleConfirmSaveMaster}
                     onCancel={rpmControl.handleCancelPreview}
                 />
@@ -186,6 +187,7 @@ export default function TabDataTarikan() {
                 <PreviewTableSmartkey
                     previewData={smartkeyControl.previewData}
                     isSavingMaster={smartkeyControl.isSavingMaster}
+                    saveProgressPercent={smartkeyControl.saveProgressPercent}
                     onConfirmSave={smartkeyControl.handleConfirmSaveMaster}
                     onCancel={smartkeyControl.handleCancelPreview}
                 />
